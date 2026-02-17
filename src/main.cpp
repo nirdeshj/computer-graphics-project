@@ -14,6 +14,7 @@ struct Seed {
     double x, y;
     double angle;
     double velocityY;
+    double velocityX;  // ADD THIS
     bool active;
 };
 
@@ -236,29 +237,28 @@ class AnimatedTreeDrawer {
         for (auto& seed : fallingSeeds) {
             if (!seed.active) continue;
 
-            // Check if seed is in the air or in the ground
             if (seed.y < groundLevel) {
-                // --- IN AIR ---
-                // CHANGED: Reduced gravity from 0.3 to 0.15 for slower fall
-                seed.velocityY += 0.08;
+                // AIR PHASE
+                seed.velocityY += 0.03;
                 seed.y += seed.velocityY;
+                seed.x += seed.velocityX;
 
-                // Wind effect
-                seed.x += 1.0;
-
-                // CHANGED: Rotation logic
-                // Rotates continuously while falling
-                seed.angle += 0.2;
+                // Regular fast rotation
+                seed.angle += 0.15;
+                // Keep angle within 0-2PI to make straightening easier later
+                if (seed.angle > 6.28) seed.angle -= 6.28;
             } else {
-                // --- HIT GROUND ---
-                // Stop rotation and horizontal movement immediately
-                seed.angle = 0;  // Reset angle to 0 (flat)
+                // GROUND PHASE
+                seed.velocityX *= 0.8;  // Friction: slow down horizontal drift
 
-                // Sinking effect
-                if (seed.y < groundLevel + 20) {
+                // SLOW STRAIGHTEN:
+                // As soon as it hits brown, we stop 'adding' 0.15.
+                // Instead, we move 5% of the way to 0 degrees every frame.
+                // This makes it "Slowly become straight"
+                seed.angle += (0 - seed.angle) * 0.05;
+
+                if (seed.y < groundLevel + 30) {
                     seed.y += 0.2;  // Sink slowly
-                } else {
-                    seed.velocityY = 0;
                 }
             }
         }
@@ -404,7 +404,7 @@ class AnimatedTreeDrawer {
                 break;
             }
 
-            case 3: {  // Flowering
+            case 3: {
                 if (phaseTimer < 25) {
                     flowerScale = phaseTimer / 25.0;
                 } else {
@@ -412,47 +412,42 @@ class AnimatedTreeDrawer {
                     phaseTimer = 0;
 
                     Seed newSeed;
-                    // Ensure the seed spawns on the RIGHT side of the tree
-                    // We use seedX (the trunk) + an offset
-                    newSeed.x = seedX + 60;   // Offset to the right
-                    newSeed.y = seedY - 180;  // Up in the branches
-
+                    newSeed.x = seedX + 20;   // Start near the top-right
+                    newSeed.y = seedY - 220;  // High in the canopy
                     newSeed.angle = 0;
                     newSeed.velocityY = 0;
+                    newSeed.velocityX = 1.5;  // ADDED: Move right 1.5 pixels/frame
                     newSeed.active = true;
                     fallingSeeds.clear();
                     fallingSeeds.push_back(newSeed);
-
-                    // Note: Don't set zoomScale = 8.0 here anymore!
-                    // Case 4 will now handle the slow zoom-in.
                 }
                 break;
             }
 
             case 4: {  // Falling phase
                 updateFallingSeeds();
-
                 if (!fallingSeeds.empty()) {
                     Seed& s = fallingSeeds[0];
 
-                    // 1. GRADUAL ZOOM: Slowly increase zoom from 1.0 to 8.0
-                    if (zoomScale < 8.0) {
-                        zoomScale += 0.05;  // Adjust this value to change zoom speed
+                    // Slow Zoom In
+                    if (zoomScale < 8.0) zoomScale += 0.02;
+
+                    // CAMERA LOGIC: To make tree ONLY move left:
+                    // We calculate where the camera needs to be to center the seed.
+                    double targetX = (screenWidth / 2.0 / zoomScale) - s.x;
+                    double targetY = (screenHeight / 2.0 / zoomScale) - s.y;
+
+                    // If the camera moves 'Right' (increasing Offset), the world moves 'Left'.
+                    // We check if targetX is greater than current, then move toward it.
+                    if (targetX > cameraOffsetX) {
+                        cameraOffsetX += (targetX - cameraOffsetX) * 0.04;
                     }
+                    // Always follow the Y to keep seed in frame
+                    cameraOffsetY += (targetY - cameraOffsetY) * 0.04;
 
-                    // 2. TARGET CALCULATION: Where the camera *wants* to be to center the seed
-                    double targetOffsetX = (screenWidth / 2.0 / zoomScale) - s.x;
-                    double targetOffsetY = (screenHeight / 2.0 / zoomScale) - s.y;
-
-                    // 3. INTERPOLATION (The "Slow" part):
-                    // Move 5% of the way to the target every frame.
-                    // This creates the "panning" effect where the tree moves out to the left.
-                    cameraOffsetX += (targetOffsetX - cameraOffsetX) * 0.05;
-                    cameraOffsetY += (targetOffsetY - cameraOffsetY) * 0.05;
-
-                    // Transition logic for when the seed hits the ground
-                    if (s.y >= groundLevel + 20) {
-                        if (phaseTimer > 40) {
+                    // Transition when seed is deep enough and has straightened (see Step 2)
+                    if (s.y >= groundLevel + 25 && std::abs(s.angle) < 0.05) {
+                        if (phaseTimer > 50) {
                             animationPhase = 5;
                             phaseTimer = 0;
                         }
@@ -461,36 +456,30 @@ class AnimatedTreeDrawer {
                 break;
             }
 
-            case 5: {                    // Seamless Reset
-                if (phaseTimer < 100) {  // Increased time for slower zoom
-                    // Fade out old tree
-                    treeGrowthScale = std::max(0.0, 1.0 - (phaseTimer / 50.0));
-                    flowerScale = std::max(0.0, 1.0 - (phaseTimer / 50.0));
+            case 5: {
+                if (phaseTimer < 150) {  // Slower reset
+                    double progress = phaseTimer / 150.0;
+                    zoomScale = 8.0 - (7.0 * progress);
 
-                    // Zoom out from 8x back to 1x
-                    double zoomProgress = phaseTimer / 100.0;
-                    zoomScale = 8.0 - (zoomProgress * 7.0);
+                    if (!fallingSeeds.empty()) {
+                        Seed& s = fallingSeeds[0];
 
-                    // CHANGED: Camera Tracking Logic
-                    // We want to keep the NEW seed (seedX, seedY) in the center of the screen
-                    // as we zoom out.
-                    // Formula: Center - (WorldPos * Zoom)
-                    cameraOffsetX = (screenWidth / 2) / zoomScale - seedX;
-                    cameraOffsetY = (screenHeight / 2) / zoomScale - seedY;
+                        // X Anchor: Stay centered on the seed's X
+                        cameraOffsetX = (screenWidth / 2.0 / zoomScale) - s.x;
 
-                    // Adjust offsets to pixel coordinates
-                    cameraOffsetX = screenWidth / 2 - static_cast<int>(seedX * zoomScale);
-                    cameraOffsetY = screenHeight / 2 - static_cast<int>(seedY * zoomScale);
+                        // Y Anchor: Keep the GROUND at exactly 75% of screen height
+                        // Formula: (groundLevel + Offset) * Zoom = ScreenHeight * 0.75
+                        cameraOffsetY = (screenHeight * 0.75 / zoomScale) - groundLevel;
+                    }
 
+                    // Fade out the old tree
+                    treeGrowthScale = std::max(0.0, 1.0 - (phaseTimer / 40.0));
                 } else {
-                    // RESET
+                    // Save the position where the seed landed for the NEW tree
+                    if (!fallingSeeds.empty()) {
+                        seedX = fallingSeeds[0].x;
+                    }
                     resetAnimation();
-
-                    // HACK for seamless loop:
-                    // resetAnimation sets seedX to 400 (center).
-                    // Since we just finished zooming out with the camera centered on the
-                    // old seed (wherever it landed), snapping seedX to 400 now
-                    // is invisible because the screen is just sky/ground (uniform).
                 }
                 break;
             }
