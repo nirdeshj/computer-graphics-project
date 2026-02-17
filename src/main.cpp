@@ -376,7 +376,7 @@ class AnimatedTreeDrawer {
     }
 
     void update() {
-        phaseTimer += 2;
+        phaseTimer += 3;
 
         switch (animationPhase) {
             case 0:  // Seed germination (0-40 frames)
