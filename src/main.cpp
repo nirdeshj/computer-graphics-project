@@ -418,12 +418,13 @@ class AnimatedTreeDrawer {
                     phaseTimer = 0;
 
                     Seed newSeed;
-                    // CHANGE: Spawn the seed specifically to the RIGHT of the trunk
-                    newSeed.x = seedX + 150;  // Move it 150 pixels right
-                    newSeed.y = seedY - 200;  // High in the branches
+                    newSeed.x = seedX + 150;
+                    // CHANGE: Decreased from -200 to -300 to make it spawn much higher
+                    newSeed.y = seedY - 390;
+
                     newSeed.angle = 0;
                     newSeed.velocityY = 0;
-                    newSeed.velocityX = 0.8;  // Drifts slightly further right
+                    newSeed.velocityX = 0.8;
                     newSeed.active = true;
                     fallingSeeds.clear();
                     fallingSeeds.push_back(newSeed);
@@ -455,27 +456,28 @@ class AnimatedTreeDrawer {
             case 5: {
                 if (phaseTimer < 150) {
                     double progress = phaseTimer / 150.0;
-                    zoomScale = 8.0 - (7.0 * progress);  // Zoom out 8x -> 1x
+                    zoomScale = 8.0 - (7.0 * progress);
 
                     if (!fallingSeeds.empty()) {
                         Seed& s = fallingSeeds[0];
 
-                        // X Anchor: Center on the seed
                         cameraOffsetX = (screenWidth / 2.0 / zoomScale) - s.x;
 
-                        // Y Anchor FIX:
-                        // Previous issue: "screenHeight * 0.75" might push seed too low if zoomed in.
-                        // New Logic: Keep the GROUND at 80% of the screen height.
-                        // This leaves 20% space at the bottom, so the seed won't clip.
-                        cameraOffsetY = (screenHeight * 0.8 / zoomScale) - groundLevel;
+                        // CHANGE: Changed 0.8 to 0.65.
+                        // This moves the "fixed ground line" higher up the screen,
+                        // keeping the seed safely away from the bottom border.
+                        cameraOffsetY = (screenHeight * 0.65 / zoomScale) - groundLevel;
                     }
 
-                    // GHOST TREE FIX:
-                    // Force the tree scale to 0 immediately when phase 5 starts
-                    // This makes the old tree vanish instantly so we only see the seed.
                     treeGrowthScale = 0;
 
                 } else {
+                    // SEAMLESS TRANSITION: Force zoomScale and offsets to 1.0
+                    // right before reset to avoid any "snapping" or "jumping"
+                    zoomScale = 1.0;
+                    cameraOffsetX = 0;
+                    cameraOffsetY = 0;
+
                     if (!fallingSeeds.empty()) {
                         seedX = fallingSeeds[0].x;
                     }
@@ -566,15 +568,17 @@ class AnimatedTreeDrawer {
             drawBranch(startX, startY, trunkLength, initialAngle, 6, treeGrowthScale * blendFactor, treeGrowthScale * blendFactor);
         }
 
-        // Draw falling seeds - LOCKED TO WORLD COORDINATES
+        // Draw falling seeds
         for (const auto& seed : fallingSeeds) {
             if (seed.active) {
-                // Calculate screen position using the same formula as the tree/ground
                 int drawX = static_cast<int>((seed.x + cameraOffsetX) * zoomScale);
                 int drawY = static_cast<int>((seed.y + cameraOffsetY) * zoomScale);
 
-                // Draw the seed using the shared zoom and camera offset
-                drawSeed(drawX, drawY, seed.angle, zoomScale * 2.0);
+                // CHANGE: Changed multiplier from 2.0 to 1.0.
+                // This ensures that when zoomScale reaches 1.0 at the end of the
+                // animation, the seed is the exact same size as the next
+                // seed that starts the growth phase.
+                drawSeed(drawX, drawY, seed.angle, zoomScale * 1.0);
             }
         }
 
