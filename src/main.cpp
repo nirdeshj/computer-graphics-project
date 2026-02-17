@@ -92,18 +92,21 @@ class AnimatedTreeDrawer {
         setcolor(oldColor);
     }
 
-    // Draw soil layers
-    void drawSoil() {
+    // Draw soil layers starting at a specific visual Y position
+    void drawSoil(int visualGroundY) {
         // Ground surface
         setcolor(DARK_BROWN);
         setfillstyle(SOLID_FILL, DARK_BROWN);
-        bar(0, groundLevel, screenWidth, groundLevel + 50);
+        // Draw from the calculated visual Y down to the bottom of the screen
+        bar(0, visualGroundY, screenWidth, screenHeight);
 
-        // Underground soil (darker)
+        // Underground soil (darker) - starts 50 pixels below the surface (scaled?)
+        // actually, let's just make the deep soil start a bit lower
         setcolor(SOIL_BROWN);
         setfillstyle(SOLID_FILL, SOIL_BROWN);
-        bar(0, groundLevel + 50, screenWidth, screenHeight);
+        bar(0, visualGroundY + 50, screenWidth, screenHeight);
     }
+
     // Draw a branch recursively with scaling
     void drawBranch(int x1, int y1, double length, double angle, int depth, double scale, double growthProgress = 1.0) {
         // OPTIMIZATION 1: Cull branches that are too small to see.
@@ -237,33 +240,36 @@ class AnimatedTreeDrawer {
         for (auto& seed : fallingSeeds) {
             if (!seed.active) continue;
 
-            if (seed.y < groundLevel) {
-                // AIR PHASE
-                seed.velocityY += 0.03;
+            if (seed.y < groundLevel) {  // IN AIR
+                seed.velocityY += 0.05;
                 seed.y += seed.velocityY;
                 seed.x += seed.velocityX;
+                seed.angle += 0.15;  // Constant tumble
+            } else {                 // GROUND PHASE
+                // Friction
+                seed.velocityX *= 0.8;
 
-                // Regular fast rotation
-                seed.angle += 0.15;
-                // Keep angle within 0-2PI to make straightening easier later
-                if (seed.angle > 6.28) seed.angle -= 6.28;
-            } else {
-                // GROUND PHASE
-                seed.velocityX *= 0.8;  // Friction: slow down horizontal drift
+                // ROTATION FIX: Smoothly straighten up
+                double normalizedAngle = fmod(seed.angle, 6.283);
+                if (std::abs(normalizedAngle) > 0.05) {
+                    seed.angle += (6.283 - normalizedAngle) * 0.1;
+                } else {
+                    seed.angle = 0;  // Snap to 0 when close enough
+                }
 
-                // SLOW STRAIGHTEN:
-                // As soon as it hits brown, we stop 'adding' 0.15.
-                // Instead, we move 5% of the way to 0 degrees every frame.
-                // This makes it "Slowly become straight"
-                seed.angle += (0 - seed.angle) * 0.05;
-
-                if (seed.y < groundLevel + 30) {
+                // SINKING & HARD STOP
+                if (seed.y < groundLevel + 25) {
                     seed.y += 0.2;  // Sink slowly
+                } else {
+                    // FORCE STOP: This kills the vibration
+                    seed.y = groundLevel + 25;
+                    seed.velocityY = 0;
+                    seed.velocityX = 0;
+                    // Don't change 'active' to false, or it will vanish!
                 }
             }
         }
     }
-
     // Display phase information
     void displayPhaseInfo() {
         setcolor(WHITE);
@@ -370,7 +376,7 @@ class AnimatedTreeDrawer {
     }
 
     void update() {
-        phaseTimer += 1;
+        phaseTimer += 2;
 
         switch (animationPhase) {
             case 0:  // Seed germination (0-40 frames)
@@ -404,7 +410,7 @@ class AnimatedTreeDrawer {
                 break;
             }
 
-            case 3: {
+            case 3: {  // Flowering
                 if (phaseTimer < 25) {
                     flowerScale = phaseTimer / 25.0;
                 } else {
@@ -412,11 +418,12 @@ class AnimatedTreeDrawer {
                     phaseTimer = 0;
 
                     Seed newSeed;
-                    newSeed.x = seedX + 20;   // Start near the top-right
-                    newSeed.y = seedY - 220;  // High in the canopy
+                    // CHANGE: Spawn the seed specifically to the RIGHT of the trunk
+                    newSeed.x = seedX + 150;  // Move it 150 pixels right
+                    newSeed.y = seedY - 200;  // High in the branches
                     newSeed.angle = 0;
                     newSeed.velocityY = 0;
-                    newSeed.velocityX = 1.5;  // ADDED: Move right 1.5 pixels/frame
+                    newSeed.velocityX = 0.8;  // Drifts slightly further right
                     newSeed.active = true;
                     fallingSeeds.clear();
                     fallingSeeds.push_back(newSeed);
@@ -428,54 +435,47 @@ class AnimatedTreeDrawer {
                 updateFallingSeeds();
                 if (!fallingSeeds.empty()) {
                     Seed& s = fallingSeeds[0];
+                    if (zoomScale < 8.0) zoomScale += 0.03;
 
-                    // Slow Zoom In
-                    if (zoomScale < 8.0) zoomScale += 0.02;
+                    // Camera centers on the seed.
+                    // Since the seed is to the right of the tree,
+                    // the tree is pushed to the left of the screen.
+                    cameraOffsetX = (screenWidth / 2.0 / zoomScale) - s.x;
+                    cameraOffsetY = (screenHeight / 2.0 / zoomScale) - s.y;
 
-                    // CAMERA LOGIC: To make tree ONLY move left:
-                    // We calculate where the camera needs to be to center the seed.
-                    double targetX = (screenWidth / 2.0 / zoomScale) - s.x;
-                    double targetY = (screenHeight / 2.0 / zoomScale) - s.y;
-
-                    // If the camera moves 'Right' (increasing Offset), the world moves 'Left'.
-                    // We check if targetX is greater than current, then move toward it.
-                    if (targetX > cameraOffsetX) {
-                        cameraOffsetX += (targetX - cameraOffsetX) * 0.04;
-                    }
-                    // Always follow the Y to keep seed in frame
-                    cameraOffsetY += (targetY - cameraOffsetY) * 0.04;
-
-                    // Transition when seed is deep enough and has straightened (see Step 2)
-                    if (s.y >= groundLevel + 25 && std::abs(s.angle) < 0.05) {
-                        if (phaseTimer > 50) {
-                            animationPhase = 5;
-                            phaseTimer = 0;
-                        }
+                    // Transition to zoom-out once seed is upright and buried
+                    if (s.y >= groundLevel + 25 && std::abs(fmod(s.angle, 6.28)) < 0.1) {
+                        animationPhase = 5;
+                        phaseTimer = 0;
                     }
                 }
                 break;
             }
 
             case 5: {
-                if (phaseTimer < 150) {  // Slower reset
+                if (phaseTimer < 150) {
                     double progress = phaseTimer / 150.0;
-                    zoomScale = 8.0 - (7.0 * progress);
+                    zoomScale = 8.0 - (7.0 * progress);  // Zoom out 8x -> 1x
 
                     if (!fallingSeeds.empty()) {
                         Seed& s = fallingSeeds[0];
 
-                        // X Anchor: Stay centered on the seed's X
+                        // X Anchor: Center on the seed
                         cameraOffsetX = (screenWidth / 2.0 / zoomScale) - s.x;
 
-                        // Y Anchor: Keep the GROUND at exactly 75% of screen height
-                        // Formula: (groundLevel + Offset) * Zoom = ScreenHeight * 0.75
-                        cameraOffsetY = (screenHeight * 0.75 / zoomScale) - groundLevel;
+                        // Y Anchor FIX:
+                        // Previous issue: "screenHeight * 0.75" might push seed too low if zoomed in.
+                        // New Logic: Keep the GROUND at 80% of the screen height.
+                        // This leaves 20% space at the bottom, so the seed won't clip.
+                        cameraOffsetY = (screenHeight * 0.8 / zoomScale) - groundLevel;
                     }
 
-                    // Fade out the old tree
-                    treeGrowthScale = std::max(0.0, 1.0 - (phaseTimer / 40.0));
+                    // GHOST TREE FIX:
+                    // Force the tree scale to 0 immediately when phase 5 starts
+                    // This makes the old tree vanish instantly so we only see the seed.
+                    treeGrowthScale = 0;
+
                 } else {
-                    // Save the position where the seed landed for the NEW tree
                     if (!fallingSeeds.empty()) {
                         seedX = fallingSeeds[0].x;
                     }
@@ -495,7 +495,7 @@ class AnimatedTreeDrawer {
     void render() {
         setactivepage(1 - getactivepage());
 
-        // (Keep your sky color logic here...)
+        // Sky Color Logic
         int r = 100 - static_cast<int>(50 * -sin(sunAngle));
         int g = 170 - static_cast<int>(100 * -sin(sunAngle));
         int b = 200 - static_cast<int>(80 * -sin(sunAngle));
@@ -509,20 +509,23 @@ class AnimatedTreeDrawer {
         drawSun();
         drawClouds();
 
-        // (Keep your transform/ground logic here...)
-        int drawOffsetX = cameraOffsetX;
-        int drawOffsetY = cameraOffsetY;
-        int transformedGroundLevel = groundLevel + drawOffsetY;
-        int originalGroundLevel = groundLevel;
-        groundLevel = transformedGroundLevel;
-        drawSoil();
-        groundLevel = originalGroundLevel;
+        // --- CRITICAL FIX: UNIFIED GROUND CALCULATION ---
+        // We calculate the screen Y position for the ground level ONCE.
+        // This ensures the tree and the soil are mathematically locked together.
+        int visualGroundY = static_cast<int>((groundLevel + cameraOffsetY) * zoomScale);
 
-        // Draw seed underground (Keep your logic here...)
+        // Draw Soil using the calculated visual Y
+        // (Note: You need to update drawSoil to accept this int parameter as discussed before)
+        drawSoil(visualGroundY);
+
+        // Draw seed underground (Phases 0-1)
         if (animationPhase <= 1) {
             double seedScale = 1.0 + (animationPhase == 0 ? phaseTimer / 20.0 : 2.0);
-            int seedDrawX = static_cast<int>((seedX + drawOffsetX) * zoomScale - (zoomScale - 1.0) * screenWidth / 2);
-            int seedDrawY = static_cast<int>((seedY + drawOffsetY) * zoomScale - (zoomScale - 1.0) * screenHeight / 2);
+
+            // Calculate seed position relative to the camera
+            int seedDrawX = static_cast<int>((seedX + cameraOffsetX) * zoomScale);
+            int seedDrawY = static_cast<int>((seedY + cameraOffsetY) * zoomScale);
+
             drawSeed(seedDrawX, seedDrawY, 0, seedScale * zoomScale);
 
             if (animationPhase == 0 && phaseTimer > 20) {
@@ -536,35 +539,42 @@ class AnimatedTreeDrawer {
         // Draw Seedling (Phase 1)
         if (animationPhase == 1) {
             double leafProgress = phaseTimer / 60.0;
-            int leafDrawX = static_cast<int>((seedX + drawOffsetX) * zoomScale - (zoomScale - 1.0) * screenWidth / 2);
+            int leafDrawX = static_cast<int>((seedX + cameraOffsetX) * zoomScale);
+
+            // Interpolate Y from seed position to ground level
             double baseY = seedY + leafProgress * (groundLevel - seedY);
-            int leafDrawY = static_cast<int>((baseY + drawOffsetY) * zoomScale - (zoomScale - 1.0) * screenHeight / 2);
+            int leafDrawY = static_cast<int>((baseY + cameraOffsetY) * zoomScale);
+
             drawSeedlingLeaves(leafDrawX, leafDrawY, leafProgress);
         }
 
-        // TREE DRAWING (Optimized)
-        if (animationPhase >= 2 || (animationPhase == 1 && phaseTimer > 50)) {
+        // TREE DRAWING
+        // Only draw if we are in growth phase OR fading out (Phase 5) but NOT if scale is 0
+        if ((animationPhase >= 2 || (animationPhase == 1 && phaseTimer > 50)) && treeGrowthScale > 0.01) {
             double blendFactor = 1.0;
             if (animationPhase == 1) {
                 blendFactor = (phaseTimer - 50) / 10.0;
             }
+
+            // USE THE SAME COORDINATES AS THE GROUND
             int startX = static_cast<int>((seedX + cameraOffsetX) * zoomScale);
-            int startY = static_cast<int>((groundLevel + cameraOffsetY) * zoomScale);
+            int startY = visualGroundY;  // Locked to soil
 
             int trunkLength = static_cast<int>(150 * zoomScale);
             double initialAngle = 3.14159 / 2;
 
-            if (treeGrowthScale > 0.01) {
-                drawBranch(startX, startY, trunkLength, initialAngle, 6, treeGrowthScale * blendFactor, treeGrowthScale * blendFactor);
-            }
+            drawBranch(startX, startY, trunkLength, initialAngle, 6, treeGrowthScale * blendFactor, treeGrowthScale * blendFactor);
         }
 
-        // Draw falling seeds (Keep your logic here...)
+        // Draw falling seeds - LOCKED TO WORLD COORDINATES
         for (const auto& seed : fallingSeeds) {
             if (seed.active) {
-                int centerX = screenWidth / 2;
-                int centerY = screenHeight / 2;
-                drawSeed(centerX, centerY, seed.angle, zoomScale * 2.0);
+                // Calculate screen position using the same formula as the tree/ground
+                int drawX = static_cast<int>((seed.x + cameraOffsetX) * zoomScale);
+                int drawY = static_cast<int>((seed.y + cameraOffsetY) * zoomScale);
+
+                // Draw the seed using the shared zoom and camera offset
+                drawSeed(drawX, drawY, seed.angle, zoomScale * 2.0);
             }
         }
 
