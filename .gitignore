@@ -40,5 +40,5 @@
 # debug information files
 *.dwo
 
-# proposal folder
-proposal/
+# proposal file
+src/proposal.pdf
