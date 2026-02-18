@@ -240,38 +240,40 @@ class AnimatedTreeDrawer {
         for (auto& seed : fallingSeeds) {
             if (!seed.active) continue;
 
-            if (seed.y < groundLevel) {  // IN AIR
-                seed.velocityY += 0.05;
+            if (seed.y < groundLevel) {
+                // AIR PHASE
+                seed.velocityY += 0.03;
                 seed.y += seed.velocityY;
                 seed.x += seed.velocityX;
-                seed.angle += 0.15;  // Constant tumble
-            } else {                 // GROUND PHASE
-                // 1. Kill all external forces immediately to stop shaking
-                seed.velocityX = 0;
+
+                // --- PERFECT ROTATION SYNC ---
+                // Calculate how far we are from the ground (0.0 to 1.0)
+                // 300 is roughly the drop height.
+                double distanceToGround = groundLevel - seed.y;
+
+                // We want the angle to be a multiple of 2*PI (6.28) when distance is 0.
+                // We force the angle to "align" as it gets closer.
+                // This formula spins fast when high, and aligns perfectly as it hits 0.
+                seed.angle = (distanceToGround / 35.0) + (3.14159 * 4);
+            } else {
+                // GROUND PHASE - HARD LOCK
+                // The moment we touch ground, we force Angle to 0.
+                // Since our formula above aligns to near-zero at distance 0, this is seamless.
+                seed.angle = 0;
                 seed.velocityY = 0;
+                seed.velocityX = 0;
 
-                // 2. TARGET: Where the seed SHOULD be (Initial Y level)
-                double targetY = groundLevel + 25;
-
-                // 3. SMOOTH SLIDE: Move 10% of the remaining distance per frame
-                // This eliminates the "Teleport" and the "Shaking"
-                seed.y += (targetY - seed.y) * 0.1;
-
-                // 4. SMOOTH ROTATION STOP
-                double normalizedAngle = fmod(seed.angle, 6.283);
-                if (std::abs(normalizedAngle) > 0.01) {
-                    seed.angle += (6.283 - normalizedAngle) * 0.1;
+                // Sinking Logic
+                if (seed.y < groundLevel + 25) {
+                    seed.y += 0.5;  // Sink
                 } else {
-                    seed.angle = 0;
-                }
-
-                // 5. READY CHECK: If we are very close, snap and finish
-                if (std::abs(targetY - seed.y) < 0.5) {
-                    seed.y = targetY;  // Lock exact position
+                    // STOP SHAKING: Hard set the final position
+                    seed.y = groundLevel + 25;
                 }
             }
         }
     }
+
     // Display phase information
     void displayPhaseInfo() {
         setcolor(WHITE);
@@ -378,7 +380,7 @@ class AnimatedTreeDrawer {
     }
 
     void update() {
-        phaseTimer += 1;
+        phaseTimer += 5;
 
         switch (animationPhase) {
             case 0:  // Seed germination (0-40 frames)
@@ -438,18 +440,19 @@ class AnimatedTreeDrawer {
                 updateFallingSeeds();
                 if (!fallingSeeds.empty()) {
                     Seed& s = fallingSeeds[0];
+
                     if (zoomScale < 8.0) zoomScale += 0.03;
 
-                    // Camera centers on the seed.
-                    // Since the seed is to the right of the tree,
-                    // the tree is pushed to the left of the screen.
+                    // Camera Follow
                     cameraOffsetX = (screenWidth / 2.0 / zoomScale) - s.x;
                     cameraOffsetY = (screenHeight / 2.0 / zoomScale) - s.y;
 
-                    // Transition to zoom-out once seed is upright and buried
-                    if (s.y >= groundLevel + 25 && std::abs(fmod(s.angle, 6.28)) < 0.1) {
+                    // Trigger zoom out ONLY when fully sunk
+                    if (s.y >= groundLevel + 25) {
                         animationPhase = 5;
                         phaseTimer = 0;
+                        // NO TELEPORT FIX: We don't change anything else here.
+                        // The camera is currently locked to the seed.
                     }
                 }
                 break;
@@ -459,41 +462,38 @@ class AnimatedTreeDrawer {
                 if (phaseTimer < 150) {
                     double progress = phaseTimer / 150.0;
 
-                    // 1. ZOOM: Smoothly go from 8x to 1x
+                    // Zoom Out
                     zoomScale = 8.0 - (7.0 * progress);
 
                     if (!fallingSeeds.empty()) {
                         Seed& s = fallingSeeds[0];
 
-                        // 2. SCREEN TARGET CALCULATION
-                        // Start: Seed is at center (300px)
-                        double startScreenY = screenHeight / 2.0;
-                        // End: Seed is at its natural resting place (505px)
-                        double endScreenY = groundLevel + 25.0;
+                        // X Axis: Always centered
+                        cameraOffsetX = (screenWidth / 2.0 / zoomScale) - s.x;
 
-                        // Lerp: Calculate where the seed should be on screen THIS frame
+                        // Y Axis - THE FIX:
+                        // Start: The seed is exactly where Case 4 left it (Screen Center)
+                        double startScreenY = screenHeight / 2.0;
+
+                        // End: The seed's final resting place (where it is naturally)
+                        // This is simply its World Y (groundLevel + 25)
+                        double endScreenY = (groundLevel + 25.0);
+
+                        // Interpolate between "Center Screen" and "Natural Position"
                         double currentScreenY = startScreenY + (endScreenY - startScreenY) * progress;
 
-                        // 3. ANCHOR CAMERA
-                        // Math: (WorldPos + Offset) * Zoom = ScreenPos
-                        // Therefore: Offset = (ScreenPos / Zoom) - WorldPos
-                        cameraOffsetX = (screenWidth / 2.0 / zoomScale) - s.x;
+                        // Calculate Offset
                         cameraOffsetY = (currentScreenY / zoomScale) - s.y;
                     }
 
                     treeGrowthScale = 0;
 
                 } else {
-                    // FINAL LOCK: Because we calculated endScreenY perfectly above,
-                    // these values match the end of the interpolation exactly.
-                    // No cuts. No jumps.
+                    // Reset
                     zoomScale = 1.0;
                     cameraOffsetX = 0;
                     cameraOffsetY = 0;
-
-                    if (!fallingSeeds.empty()) {
-                        seedX = fallingSeeds[0].x;
-                    }
+                    if (!fallingSeeds.empty()) seedX = fallingSeeds[0].x;
                     resetAnimation();
                 }
                 break;
