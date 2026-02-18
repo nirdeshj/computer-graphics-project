@@ -246,26 +246,23 @@ class AnimatedTreeDrawer {
                 seed.x += seed.velocityX;
                 seed.angle += 0.15;  // Constant tumble
             } else {                 // GROUND PHASE
-                // Friction
-                seed.velocityX *= 0.8;
+                seed.velocityX = 0;  // Stop horizontal drift immediately
 
-                // ROTATION FIX: Smoothly straighten up
+                // ROTATION: Smoothly straighten up
                 double normalizedAngle = fmod(seed.angle, 6.283);
-                if (std::abs(normalizedAngle) > 0.05) {
+                if (std::abs(normalizedAngle) > 0.02) {
                     seed.angle += (6.283 - normalizedAngle) * 0.1;
                 } else {
-                    seed.angle = 0;  // Snap to 0 when close enough
+                    seed.angle = 0;  // HARD STOP for rotation
                 }
 
-                // SINKING & HARD STOP
+                // VERTICAL SINKING:
                 if (seed.y < groundLevel + 25) {
-                    seed.y += 0.2;  // Sink slowly
+                    seed.y += 0.2;
                 } else {
-                    // FORCE STOP: This kills the vibration
+                    // HARD STOP for position: This kills the vibration
                     seed.y = groundLevel + 25;
                     seed.velocityY = 0;
-                    seed.velocityX = 0;
-                    // Don't change 'active' to false, or it will vanish!
                 }
             }
         }
@@ -456,24 +453,19 @@ class AnimatedTreeDrawer {
             case 5: {
                 if (phaseTimer < 150) {
                     double progress = phaseTimer / 150.0;
+                    // Linear interpolation from 8.0 down to 1.0
                     zoomScale = 8.0 - (7.0 * progress);
 
                     if (!fallingSeeds.empty()) {
                         Seed& s = fallingSeeds[0];
 
+                        // Keep ground/seed anchored
                         cameraOffsetX = (screenWidth / 2.0 / zoomScale) - s.x;
-
-                        // CHANGE: Changed 0.8 to 0.65.
-                        // This moves the "fixed ground line" higher up the screen,
-                        // keeping the seed safely away from the bottom border.
                         cameraOffsetY = (screenHeight * 0.65 / zoomScale) - groundLevel;
                     }
-
                     treeGrowthScale = 0;
-
                 } else {
-                    // SEAMLESS TRANSITION: Force zoomScale and offsets to 1.0
-                    // right before reset to avoid any "snapping" or "jumping"
+                    // FINAL FRAME LOCK: Force values to defaults for the reset
                     zoomScale = 1.0;
                     cameraOffsetX = 0;
                     cameraOffsetY = 0;
@@ -486,6 +478,7 @@ class AnimatedTreeDrawer {
                 break;
             }
         }
+
         auto currentTime = std::chrono::steady_clock::now();
         double elapsedSeconds = std::chrono::duration<double>(currentTime - lastTime).count();
         lastTime = currentTime;
@@ -574,10 +567,9 @@ class AnimatedTreeDrawer {
                 int drawX = static_cast<int>((seed.x + cameraOffsetX) * zoomScale);
                 int drawY = static_cast<int>((seed.y + cameraOffsetY) * zoomScale);
 
-                // CHANGE: Changed multiplier from 2.0 to 1.0.
-                // This ensures that when zoomScale reaches 1.0 at the end of the
-                // animation, the seed is the exact same size as the next
-                // seed that starts the growth phase.
+                // FIX: Changed from 2.0 to 1.0.
+                // This ensures that when zoomScale reaches 1.0,
+                // this seed is the same size as the next one that grows.
                 drawSeed(drawX, drawY, seed.angle, zoomScale * 1.0);
             }
         }
