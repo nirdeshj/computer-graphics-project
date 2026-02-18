@@ -246,23 +246,28 @@ class AnimatedTreeDrawer {
                 seed.x += seed.velocityX;
                 seed.angle += 0.15;  // Constant tumble
             } else {                 // GROUND PHASE
-                seed.velocityX = 0;  // Stop horizontal drift immediately
+                // 1. Kill all external forces immediately to stop shaking
+                seed.velocityX = 0;
+                seed.velocityY = 0;
 
-                // ROTATION: Smoothly straighten up
+                // 2. TARGET: Where the seed SHOULD be (Initial Y level)
+                double targetY = groundLevel + 25;
+
+                // 3. SMOOTH SLIDE: Move 10% of the remaining distance per frame
+                // This eliminates the "Teleport" and the "Shaking"
+                seed.y += (targetY - seed.y) * 0.1;
+
+                // 4. SMOOTH ROTATION STOP
                 double normalizedAngle = fmod(seed.angle, 6.283);
-                if (std::abs(normalizedAngle) > 0.02) {
+                if (std::abs(normalizedAngle) > 0.01) {
                     seed.angle += (6.283 - normalizedAngle) * 0.1;
                 } else {
-                    seed.angle = 0;  // HARD STOP for rotation
+                    seed.angle = 0;
                 }
 
-                // VERTICAL SINKING:
-                if (seed.y < groundLevel + 25) {
-                    seed.y += 0.2;
-                } else {
-                    // HARD STOP for position: This kills the vibration
-                    seed.y = groundLevel + 25;
-                    seed.velocityY = 0;
+                // 5. READY CHECK: If we are very close, snap and finish
+                if (std::abs(targetY - seed.y) < 0.5) {
+                    seed.y = targetY;  // Lock exact position
                 }
             }
         }
@@ -373,7 +378,7 @@ class AnimatedTreeDrawer {
     }
 
     void update() {
-        phaseTimer += 3;
+        phaseTimer += 1;
 
         switch (animationPhase) {
             case 0:  // Seed germination (0-40 frames)
@@ -453,19 +458,35 @@ class AnimatedTreeDrawer {
             case 5: {
                 if (phaseTimer < 150) {
                     double progress = phaseTimer / 150.0;
-                    // Linear interpolation from 8.0 down to 1.0
+
+                    // 1. ZOOM: Smoothly go from 8x to 1x
                     zoomScale = 8.0 - (7.0 * progress);
 
                     if (!fallingSeeds.empty()) {
                         Seed& s = fallingSeeds[0];
 
-                        // Keep ground/seed anchored
+                        // 2. SCREEN TARGET CALCULATION
+                        // Start: Seed is at center (300px)
+                        double startScreenY = screenHeight / 2.0;
+                        // End: Seed is at its natural resting place (505px)
+                        double endScreenY = groundLevel + 25.0;
+
+                        // Lerp: Calculate where the seed should be on screen THIS frame
+                        double currentScreenY = startScreenY + (endScreenY - startScreenY) * progress;
+
+                        // 3. ANCHOR CAMERA
+                        // Math: (WorldPos + Offset) * Zoom = ScreenPos
+                        // Therefore: Offset = (ScreenPos / Zoom) - WorldPos
                         cameraOffsetX = (screenWidth / 2.0 / zoomScale) - s.x;
-                        cameraOffsetY = (screenHeight * 0.65 / zoomScale) - groundLevel;
+                        cameraOffsetY = (currentScreenY / zoomScale) - s.y;
                     }
+
                     treeGrowthScale = 0;
+
                 } else {
-                    // FINAL FRAME LOCK: Force values to defaults for the reset
+                    // FINAL LOCK: Because we calculated endScreenY perfectly above,
+                    // these values match the end of the interpolation exactly.
+                    // No cuts. No jumps.
                     zoomScale = 1.0;
                     cameraOffsetX = 0;
                     cameraOffsetY = 0;
@@ -567,9 +588,7 @@ class AnimatedTreeDrawer {
                 int drawX = static_cast<int>((seed.x + cameraOffsetX) * zoomScale);
                 int drawY = static_cast<int>((seed.y + cameraOffsetY) * zoomScale);
 
-                // FIX: Changed from 2.0 to 1.0.
-                // This ensures that when zoomScale reaches 1.0,
-                // this seed is the same size as the next one that grows.
+                // Ensure this is 1.0 so it matches the start of the next cycle
                 drawSeed(drawX, drawY, seed.angle, zoomScale * 1.0);
             }
         }
