@@ -242,7 +242,7 @@ class AnimatedTreeDrawer {
 
             if (seed.y < groundLevel) {
                 // AIR PHASE
-                seed.velocityY += 0.03;
+                seed.velocityY += 0.02;
                 seed.y += seed.velocityY;
                 seed.x += seed.velocityX;
 
@@ -441,18 +441,26 @@ class AnimatedTreeDrawer {
                 if (!fallingSeeds.empty()) {
                     Seed& s = fallingSeeds[0];
 
-                    if (zoomScale < 8.0) zoomScale += 0.03;
+                    // 1. Zoom stays slow and cinematic
+                    if (zoomScale < 8.0) zoomScale += 0.015;
 
-                    // Camera Follow
-                    cameraOffsetX = (screenWidth / 2.0 / zoomScale) - s.x;
-                    cameraOffsetY = (screenHeight / 2.0 / zoomScale) - s.y;
+                    // 2. TARGET CALCULATION
+                    // We calculate where the camera MUST be to keep the seed at
+                    // the exact horizontal and vertical center of the screen.
+                    double targetX = (screenWidth / 2.0 / zoomScale) - s.x;
+                    double targetY = (screenHeight / 2.0 / zoomScale) - s.y;
 
-                    // Trigger zoom out ONLY when fully sunk
-                    if (s.y >= groundLevel + 25) {
+                    // 3. STICKY FOLLOW (The Fix)
+                    // We increase this factor to 0.15.
+                    // It's still smooth (no snapping), but the camera is now
+                    // 5x more aggressive at keeping the seed in the center.
+                    cameraOffsetX += (targetX - cameraOffsetX) * 0.15;
+                    cameraOffsetY += (targetY - cameraOffsetY) * 0.15;
+
+                    // Transition to Phase 5 only when the seed is buried and stopped
+                    if (s.y >= groundLevel + 25 && std::abs(s.angle) < 0.01) {
                         animationPhase = 5;
                         phaseTimer = 0;
-                        // NO TELEPORT FIX: We don't change anything else here.
-                        // The camera is currently locked to the seed.
                     }
                 }
                 break;
@@ -587,8 +595,6 @@ class AnimatedTreeDrawer {
             if (seed.active) {
                 int drawX = static_cast<int>((seed.x + cameraOffsetX) * zoomScale);
                 int drawY = static_cast<int>((seed.y + cameraOffsetY) * zoomScale);
-
-                // Ensure this is 1.0 so it matches the start of the next cycle
                 drawSeed(drawX, drawY, seed.angle, zoomScale * 1.0);
             }
         }
