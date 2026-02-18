@@ -380,7 +380,7 @@ class AnimatedTreeDrawer {
     }
 
     void update() {
-        phaseTimer += 5;
+        phaseTimer += 1;
 
         switch (animationPhase) {
             case 0:  // Seed germination (0-40 frames)
@@ -426,7 +426,7 @@ class AnimatedTreeDrawer {
                     // CHANGE: Decreased from -200 to -300 to make it spawn much higher
                     newSeed.y = seedY - 390;
 
-                    newSeed.angle = 0;
+                    newSeed.angle = 60;
                     newSeed.velocityY = 0;
                     newSeed.velocityX = 0.8;
                     newSeed.active = true;
