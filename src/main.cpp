@@ -37,7 +37,7 @@ class AnimatedTreeDrawer {
     int phaseTimer;
     int rightmostBranchX, rightmostBranchY;
     double zoomScale;
-    int cameraOffsetX, cameraOffsetY;
+    double cameraOffsetX, cameraOffsetY;
 
     // Colors
     const int BROWN = COLOR(139, 69, 19);
@@ -93,82 +93,60 @@ class AnimatedTreeDrawer {
     }
 
     // Draw soil layers starting at a specific visual Y position
-    void drawSoil(int visualGroundY) {
-        // Ground surface
+    // void drawSoil(int visualGroundY) {
+    //     // Ground surface
+    //     setcolor(DARK_BROWN);
+    //     setfillstyle(SOLID_FILL, DARK_BROWN);
+    //     // Draw from the calculated visual Y down to the bottom of the screen
+    //     bar(0, visualGroundY, screenWidth, screenHeight);
+
+    //     // Underground soil (darker) - starts 50 pixels below the surface (scaled?)
+    //     // actually, let's just make the deep soil start a bit lower
+    //     setcolor(SOIL_BROWN);
+    //     setfillstyle(SOLID_FILL, SOIL_BROWN);
+    //     bar(0, visualGroundY + 50, screenWidth, screenHeight);
+    // }
+
+    void drawSoil() {
         setcolor(DARK_BROWN);
         setfillstyle(SOLID_FILL, DARK_BROWN);
-        // Draw from the calculated visual Y down to the bottom of the screen
-        bar(0, visualGroundY, screenWidth, screenHeight);
+        // Draw from the current visual level to the screen bottom
+        bar(0, groundLevel, screenWidth, screenHeight);
 
-        // Underground soil (darker) - starts 50 pixels below the surface (scaled?)
-        // actually, let's just make the deep soil start a bit lower
         setcolor(SOIL_BROWN);
         setfillstyle(SOLID_FILL, SOIL_BROWN);
-        bar(0, visualGroundY + 50, screenWidth, screenHeight);
+        bar(0, groundLevel + 40, screenWidth, screenHeight);
     }
 
-    // Draw a branch recursively with scaling
     void drawBranch(int x1, int y1, double length, double angle, int depth, double scale, double growthProgress = 1.0) {
-        // OPTIMIZATION 1: Cull branches that are too small to see.
-        // If the branch is less than 2 pixels long, don't waste CPU drawing it.
-        double currentVisualLength = length * scale;
-        if (currentVisualLength < 2.0 || depth <= 0) return;
+        // OPTIMIZATION: Stop drawing if depth is too low or scale is tiny to prevent lag
+        if (depth <= 1 || scale <= 0.05) return;
 
         double branchProgress = std::min(1.0, std::max(0.0, (growthProgress * 10) - (8 - depth)));
         if (branchProgress <= 0) return;
 
-        double scaledLength = currentVisualLength * branchProgress;
-
+        double scaledLength = length * scale * branchProgress;
         int x2 = x1 + static_cast<int>(scaledLength * cos(angle));
         int y2 = y1 - static_cast<int>(scaledLength * sin(angle));
 
-        // Track rightmost position for flower/seed
-        if (depth == 1 && x2 > rightmostBranchX) {
+        // Track rightmost position for seed spawn
+        if (depth == 2 && x2 > rightmostBranchX) {
             rightmostBranchX = x2;
             rightmostBranchY = y2;
         }
 
-        // Draw the Branch
-        if (depth > 4) {
-            setcolor(BROWN);
-            setlinestyle(SOLID_LINE, 0, static_cast<int>(depth * scale) + 1);
-        } else {
-            setcolor(COLOR(101, 67, 33));
-            // OPTIMIZATION 2: Simpler lines for small branches
-            setlinestyle(SOLID_LINE, 0, std::max(1, static_cast<int>(depth * scale)));
-        }
-
+        // Draw the line
+        setlinestyle(SOLID_LINE, 0, std::max(1, static_cast<int>(depth * scale * zoomScale)));
         line(x1, y1, x2, y2);
 
-        // OPTIMIZATION 3: Reduce leaf density
-        // Only draw complex leaves if the branch is large enough
-        if (depth <= 5 && scale > 0.5 && branchProgress > 0.8 && currentVisualLength > 5.0) {
-            setcolor(LIGHT_GREEN);
-            setfillstyle(SOLID_FILL, LIGHT_GREEN);
-
-            // Draw fewer leaves at lower depths to save FPS
-            int numLeaves = (depth <= 2) ? 5 : 2;
-
-            for (int i = 0; i < numLeaves; i++) {
-                int leafX = x2 + (rand() % 12 - 6);
-                int leafY = y2 + (rand() % 12 - 6);
-                // Simplify leaf size calc
-                int leafSize = static_cast<int>(3 * scale);
-                if (leafSize > 0) fillellipse(leafX, leafY, leafSize, leafSize);
-            }
-        }
-
-        // Draw flowers only at depth 1 (Tips)
-        if (depth == 1 && showFlowers && scale > 0.8 && branchProgress > 0.9) {
-            drawFlower(x2, y2, flowerScale);
+        // OPTIMIZATION: Only draw leaves if zoom is low or depth is low
+        if (depth <= 4 && scale > 0.5 && branchProgress > 0.8) {
+            fillellipse(x2, y2, static_cast<int>(3 * scale), static_cast<int>(3 * scale));
         }
 
         double newLength = length * 0.7;
-
-        // Recursive calls
         drawBranch(x2, y2, newLength, angle - 0.3, depth - 1, scale, growthProgress);
         drawBranch(x2, y2, newLength, angle + 0.3, depth - 1, scale, growthProgress);
-        drawBranch(x2, y2, newLength * 0.8, angle, depth - 1, scale, growthProgress);
     }
 
     void drawFlower(int x, int y, double scale) {
@@ -438,66 +416,54 @@ class AnimatedTreeDrawer {
 
             case 4: {  // Falling phase
                 updateFallingSeeds();
+
                 if (!fallingSeeds.empty()) {
                     Seed& s = fallingSeeds[0];
 
-                    // 1. Zoom stays slow and cinematic
-                    if (zoomScale < 8.0) zoomScale += 0.015;
+                    // Smooth cinematic zoom in
+                    if (zoomScale < 8.0) zoomScale += 0.05;
 
-                    // 2. TARGET CALCULATION
-                    // We calculate where the camera MUST be to keep the seed at
-                    // the exact horizontal and vertical center of the screen.
-                    double targetX = (screenWidth / 2.0 / zoomScale) - s.x;
-                    double targetY = (screenHeight / 2.0 / zoomScale) - s.y;
+                    // CENTER THE CAMERA ON SEED
+                    cameraOffsetX = (screenWidth / 2.0 / zoomScale) - s.x;
+                    cameraOffsetY = (screenHeight / 2.0 / zoomScale) - s.y;
 
-                    // 3. STICKY FOLLOW (The Fix)
-                    // We increase this factor to 0.15.
-                    // It's still smooth (no snapping), but the camera is now
-                    // 5x more aggressive at keeping the seed in the center.
-                    cameraOffsetX += (targetX - cameraOffsetX) * 0.15;
-                    cameraOffsetY += (targetY - cameraOffsetY) * 0.15;
-
-                    // Transition to Phase 5 only when the seed is buried and stopped
-                    if (s.y >= groundLevel + 25 && std::abs(s.angle) < 0.01) {
-                        animationPhase = 5;
-                        phaseTimer = 0;
+                    // CHANGE: Trigger Phase 5 immediately once seed is buried and stopped
+                    if (s.y >= groundLevel + 25) {
+                        // Wait for a small pause before zooming out (about 1 second)
+                        if (phaseTimer > 100) {
+                            animationPhase = 5;
+                            phaseTimer = 0;
+                        }
                     }
                 }
                 break;
             }
 
-            case 5: {
-                if (phaseTimer < 150) {
+            case 5: {                    // Zoom out phase
+                if (phaseTimer < 150) {  // Give it 150 frames to zoom out
                     double progress = phaseTimer / 150.0;
 
-                    // Zoom Out
+                    // Smoothly transition zoom from 8.0 back to 1.0
                     zoomScale = 8.0 - (7.0 * progress);
 
                     if (!fallingSeeds.empty()) {
                         Seed& s = fallingSeeds[0];
 
-                        // X Axis: Always centered
+                        // X Axis: Stay centered on seed
                         cameraOffsetX = (screenWidth / 2.0 / zoomScale) - s.x;
 
-                        // Y Axis - THE FIX:
-                        // Start: The seed is exactly where Case 4 left it (Screen Center)
+                        // Y Axis: Transition from "Center of Screen" to "Landed Position"
                         double startScreenY = screenHeight / 2.0;
-
-                        // End: The seed's final resting place (where it is naturally)
-                        // This is simply its World Y (groundLevel + 25)
                         double endScreenY = (groundLevel + 25.0);
-
-                        // Interpolate between "Center Screen" and "Natural Position"
                         double currentScreenY = startScreenY + (endScreenY - startScreenY) * progress;
 
-                        // Calculate Offset
                         cameraOffsetY = (currentScreenY / zoomScale) - s.y;
                     }
 
-                    treeGrowthScale = 0;
-
+                    // Fade out the old tree scale
+                    treeGrowthScale = 1.0 - progress;
                 } else {
-                    // Reset
+                    // HARD RESET to ensure next cycle starts clean
                     zoomScale = 1.0;
                     cameraOffsetX = 0;
                     cameraOffsetY = 0;
@@ -515,6 +481,94 @@ class AnimatedTreeDrawer {
         sunAngle += 0.5 * elapsedSeconds;  // radians per second
         if (sunAngle > 2 * 3.14159) sunAngle -= 2 * 3.14159;
     }
+    /*
+        void render() {
+            setactivepage(1 - getactivepage());
+
+            // Sky Color Logic
+            int r = 100 - static_cast<int>(50 * -sin(sunAngle));
+            int g = 170 - static_cast<int>(100 * -sin(sunAngle));
+            int b = 200 - static_cast<int>(80 * -sin(sunAngle));
+            r = std::max(0, std::min(255, r));
+            g = std::max(0, std::min(255, g));
+            b = std::max(0, std::min(255, b));
+
+            setbkcolor(COLOR(r, g, b));
+            cleardevice();
+
+            drawSun();
+            drawClouds();
+
+            // --- CRITICAL FIX: UNIFIED GROUND CALCULATION ---
+            // We calculate the screen Y position for the ground level ONCE.
+            // This ensures the tree and the soil are mathematically locked together.
+            int visualGroundY = static_cast<int>((groundLevel + cameraOffsetY) * zoomScale);
+
+            // Draw Soil using the calculated visual Y
+            // (Note: You need to update drawSoil to accept this int parameter as discussed before)
+            drawSoil(visualGroundY);
+
+            // Draw seed underground (Phases 0-1)
+            if (animationPhase <= 1) {
+                double seedScale = 1.0 + (animationPhase == 0 ? phaseTimer / 20.0 : 2.0);
+
+                // Calculate seed position relative to the camera
+                int seedDrawX = static_cast<int>((seedX + cameraOffsetX) * zoomScale);
+                int seedDrawY = static_cast<int>((seedY + cameraOffsetY) * zoomScale);
+
+                drawSeed(seedDrawX, seedDrawY, 0, seedScale * zoomScale);
+
+                if (animationPhase == 0 && phaseTimer > 20) {
+                    setcolor(LIGHT_GREEN);
+                    double sproutProgress = (phaseTimer - 20) / 20.0;
+                    int sproutLength = static_cast<int>(sproutProgress * 20 * zoomScale);
+                    line(seedDrawX, seedDrawY, seedDrawX, seedDrawY - sproutLength);
+                }
+            }
+
+            // Draw Seedling (Phase 1)
+            if (animationPhase == 1) {
+                double leafProgress = phaseTimer / 60.0;
+                int leafDrawX = static_cast<int>((seedX + cameraOffsetX) * zoomScale);
+
+                // Interpolate Y from seed position to ground level
+                double baseY = seedY + leafProgress * (groundLevel - seedY);
+                int leafDrawY = static_cast<int>((baseY + cameraOffsetY) * zoomScale);
+
+                drawSeedlingLeaves(leafDrawX, leafDrawY, leafProgress);
+            }
+
+            // TREE DRAWING
+            // Only draw if we are in growth phase OR fading out (Phase 5) but NOT if scale is 0
+            if ((animationPhase >= 2 || (animationPhase == 1 && phaseTimer > 50)) && treeGrowthScale > 0.01) {
+                double blendFactor = 1.0;
+                if (animationPhase == 1) {
+                    blendFactor = (phaseTimer - 50) / 10.0;
+                }
+
+                // USE THE SAME COORDINATES AS THE GROUND
+                int startX = static_cast<int>((seedX + cameraOffsetX) * zoomScale);
+                int startY = visualGroundY;  // Locked to soil
+
+                int trunkLength = static_cast<int>(150 * zoomScale);
+                double initialAngle = 3.14159 / 2;
+
+                drawBranch(startX, startY, trunkLength, initialAngle, 6, treeGrowthScale * blendFactor, treeGrowthScale * blendFactor);
+            }
+
+            // Draw falling seeds
+            for (const auto& seed : fallingSeeds) {
+                if (seed.active) {
+                    int drawX = static_cast<int>((seed.x + cameraOffsetX) * zoomScale);
+                    int drawY = static_cast<int>((seed.y + cameraOffsetY) * zoomScale);
+                    drawSeed(drawX, drawY, seed.angle, zoomScale * 1.0);
+                }
+            }
+
+            displayPhaseInfo();
+            setvisualpage(getactivepage());
+        }
+    */
 
     void render() {
         setactivepage(1 - getactivepage());
@@ -526,76 +580,54 @@ class AnimatedTreeDrawer {
         r = std::max(0, std::min(255, r));
         g = std::max(0, std::min(255, g));
         b = std::max(0, std::min(255, b));
-
         setbkcolor(COLOR(r, g, b));
         cleardevice();
 
         drawSun();
         drawClouds();
 
-        // --- CRITICAL FIX: UNIFIED GROUND CALCULATION ---
-        // We calculate the screen Y position for the ground level ONCE.
-        // This ensures the tree and the soil are mathematically locked together.
+        // --- CRITICAL FIX: UNIFIED TRANSFORMATION ---
+        // Calculate the ground level in screen space using the SHARED camera math
         int visualGroundY = static_cast<int>((groundLevel + cameraOffsetY) * zoomScale);
 
-        // Draw Soil using the calculated visual Y
-        // (Note: You need to update drawSoil to accept this int parameter as discussed before)
-        drawSoil(visualGroundY);
+        // Temporarily set groundLevel for drawSoil
+        int tempGround = groundLevel;
+        groundLevel = visualGroundY;
+        drawSoil();
+        groundLevel = tempGround;
 
-        // Draw seed underground (Phases 0-1)
-        if (animationPhase <= 1) {
-            double seedScale = 1.0 + (animationPhase == 0 ? phaseTimer / 20.0 : 2.0);
+        // Draw seed (Underground or Falling)
+        if (animationPhase <= 1 || animationPhase >= 4) {
+            double currentX, currentY, currentAngle, currentScale;
 
-            // Calculate seed position relative to the camera
-            int seedDrawX = static_cast<int>((seedX + cameraOffsetX) * zoomScale);
-            int seedDrawY = static_cast<int>((seedY + cameraOffsetY) * zoomScale);
-
-            drawSeed(seedDrawX, seedDrawY, 0, seedScale * zoomScale);
-
-            if (animationPhase == 0 && phaseTimer > 20) {
-                setcolor(LIGHT_GREEN);
-                double sproutProgress = (phaseTimer - 20) / 20.0;
-                int sproutLength = static_cast<int>(sproutProgress * 20 * zoomScale);
-                line(seedDrawX, seedDrawY, seedDrawX, seedDrawY - sproutLength);
-            }
-        }
-
-        // Draw Seedling (Phase 1)
-        if (animationPhase == 1) {
-            double leafProgress = phaseTimer / 60.0;
-            int leafDrawX = static_cast<int>((seedX + cameraOffsetX) * zoomScale);
-
-            // Interpolate Y from seed position to ground level
-            double baseY = seedY + leafProgress * (groundLevel - seedY);
-            int leafDrawY = static_cast<int>((baseY + cameraOffsetY) * zoomScale);
-
-            drawSeedlingLeaves(leafDrawX, leafDrawY, leafProgress);
-        }
-
-        // TREE DRAWING
-        // Only draw if we are in growth phase OR fading out (Phase 5) but NOT if scale is 0
-        if ((animationPhase >= 2 || (animationPhase == 1 && phaseTimer > 50)) && treeGrowthScale > 0.01) {
-            double blendFactor = 1.0;
-            if (animationPhase == 1) {
-                blendFactor = (phaseTimer - 50) / 10.0;
+            if (!fallingSeeds.empty() && fallingSeeds[0].active) {
+                // Falling state
+                currentX = fallingSeeds[0].x;
+                currentY = fallingSeeds[0].y;
+                currentAngle = fallingSeeds[0].angle;
+                currentScale = zoomScale * 1.0;  // Use 1.0 to match the seedling size later
+            } else {
+                // Landed/Germinating state
+                currentX = seedX;
+                currentY = seedY;
+                currentAngle = 0;
+                currentScale = (animationPhase == 0 ? 1.0 + phaseTimer / 20.0 : 2.0) * zoomScale;
             }
 
-            // USE THE SAME COORDINATES AS THE GROUND
+            // Apply the EXACT SAME formula to the seed as the ground
+            int drawX = static_cast<int>((currentX + cameraOffsetX) * zoomScale);
+            int drawY = static_cast<int>((currentY + cameraOffsetY) * zoomScale);
+            drawSeed(drawX, drawY, currentAngle, currentScale);
+        }
+
+        // Tree Drawing
+        if (animationPhase >= 2 || (animationPhase == 1 && phaseTimer > 50)) {
+            double blendFactor = (animationPhase == 1) ? (phaseTimer - 50) / 10.0 : 1.0;
             int startX = static_cast<int>((seedX + cameraOffsetX) * zoomScale);
-            int startY = visualGroundY;  // Locked to soil
+            int startY = visualGroundY;  // Perfectly locked to the soil
 
-            int trunkLength = static_cast<int>(150 * zoomScale);
-            double initialAngle = 3.14159 / 2;
-
-            drawBranch(startX, startY, trunkLength, initialAngle, 6, treeGrowthScale * blendFactor, treeGrowthScale * blendFactor);
-        }
-
-        // Draw falling seeds
-        for (const auto& seed : fallingSeeds) {
-            if (seed.active) {
-                int drawX = static_cast<int>((seed.x + cameraOffsetX) * zoomScale);
-                int drawY = static_cast<int>((seed.y + cameraOffsetY) * zoomScale);
-                drawSeed(drawX, drawY, seed.angle, zoomScale * 1.0);
+            if (treeGrowthScale > 0.01) {
+                drawBranch(startX, startY, 150 * zoomScale, 3.14159 / 2, 8, treeGrowthScale * blendFactor, treeGrowthScale * blendFactor);
             }
         }
 
