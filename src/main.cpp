@@ -356,6 +356,30 @@ class AnimatedTreeDrawer {
         }
     }
 
+    void drawRoot(int x1, int y1, double length, double angle, int depth, double growthProgress) {
+        if (depth <= 0 || growthProgress <= 0) return;
+
+        int rootColor = COLOR(190, 150, 100);
+        setcolor(rootColor);
+        setlinestyle(SOLID_LINE, 0, std::max(1, static_cast<int>(depth * zoomScale * 0.6)));
+
+        double currentLength = length * growthProgress;
+
+        // MATH FIX:
+        // Increase cos (Horizontal) multiplier to 1.5
+        // Decrease sin (Vertical) multiplier to 0.25
+        int x2 = x1 + static_cast<int>(currentLength * cos(angle) * 1.5);
+        int y2 = y1 + static_cast<int>(currentLength * sin(angle) * 0.25);
+
+        line(x1, y1, x2, y2);
+
+        if (depth > 1) {
+            // Very wide angle (1.4 radians) ensures they stay flat
+            drawRoot(x2, y2, length * 0.7, angle + 1.4, depth - 1, growthProgress);
+            drawRoot(x2, y2, length * 0.7, angle - 1.4, depth - 1, growthProgress);
+        }
+    }
+
    public:
     AnimatedTreeDrawer()
         : screenWidth(800),
@@ -403,7 +427,7 @@ class AnimatedTreeDrawer {
     }
 
     void update() {
-        phaseTimer += 3;
+        phaseTimer += 1;
 
         switch (animationPhase) {
             case 0:  // Seed germination (0-40 frames)
@@ -415,10 +439,9 @@ class AnimatedTreeDrawer {
                 }
                 break;
 
-            case 1: {  // Leaf phase (0-60 frames) - grows smoothly
+            case 1: {  // Leaf phase
                 if (phaseTimer < 60) {
-                    // Don't set to 0, let it transition smoothly
-                    treeGrowthScale = std::min(0.15, phaseTimer / 400.0);  // Very gradual start
+                    treeGrowthScale = std::min(0.15, phaseTimer / 400.0);
                 } else {
                     animationPhase = 2;
                     phaseTimer = 0;
@@ -426,10 +449,11 @@ class AnimatedTreeDrawer {
                 break;
             }
 
-            case 2: {  // Tree growth (0-100 frames)
+            case 2: {  // Tree growth
                 if (phaseTimer < 100) {
-                    treeGrowthScale = 0.15 + (phaseTimer / 100.0) * 0.85;  // Continue from 0.15
+                    treeGrowthScale = 0.15 + (phaseTimer / 100.0) * 0.85;
                 } else {
+                    treeGrowthScale = 1.0;  // HARD CAP: Prevents infinite growth
                     animationPhase = 3;
                     phaseTimer = 0;
                     showFlowers = true;
@@ -549,7 +573,7 @@ class AnimatedTreeDrawer {
     void render() {
         setactivepage(1 - getactivepage());
 
-        // Sky Color Logic
+        // 1. SKY AND ATMOSPHERE CALCULATION
         int r = 100 - static_cast<int>(50 * -sin(sunAngle));
         int g = 170 - static_cast<int>(100 * -sin(sunAngle));
         int b = 200 - static_cast<int>(80 * -sin(sunAngle));
@@ -562,74 +586,77 @@ class AnimatedTreeDrawer {
         drawSun();
         drawClouds();
 
-        // --- CRITICAL FIX: UNIFIED TRANSFORMATION ---
-        // Calculate the ground level in screen space using the SHARED camera math
-        int visualGroundY = static_cast<int>((groundLevel + cameraOffsetY) * zoomScale);
+        // 2. GROUND/SOIL DRAWING
+        // Calculate visual surface Y in screen space
+        int surfaceY = static_cast<int>((groundLevel + cameraOffsetY) * zoomScale);
 
-        // Temporarily set groundLevel for drawSoil
         int tempGround = groundLevel;
-        groundLevel = visualGroundY;
+        groundLevel = surfaceY;  // Temporarily update for drawSoil
         drawSoil();
         groundLevel = tempGround;
 
-        // Draw seed (Underground or Falling)
-        if (animationPhase <= 1 || animationPhase >= 4) {
-            double currentX, currentY, currentAngle, currentScale;
+        // 3. ANCHOR COORDINATES (Screen Space)
+        int anchorX = static_cast<int>((seedX + cameraOffsetX) * zoomScale);
+        int anchorY = static_cast<int>((seedY + cameraOffsetY) * zoomScale);
 
-            if (!fallingSeeds.empty() && fallingSeeds[0].active) {
-                // Falling state
-                currentX = fallingSeeds[0].x;
-                currentY = fallingSeeds[0].y;
-                currentAngle = fallingSeeds[0].angle;
-                currentScale = zoomScale * 1.0;  // Use 1.0 to match the seedling size later
-            } else {
-                // Landed/Germinating state
-                currentX = seedX;
-                currentY = seedY;
-                currentAngle = 0;
-                currentScale = (animationPhase == 0 ? 1.0 + phaseTimer / 20.0 : 2.0) * zoomScale;
-            }
+        // 4. DRAW ROOTS AND CONNECTORS (Phases 1-4)
+        if (animationPhase >= 1 && animationPhase <= 4) {
+            // A. THE VERTICAL CONNECTOR (Taproot)
+            // This links the buried seed up to the surface where the trunk starts.
+            setcolor(DARK_BROWN);
+            setlinestyle(SOLID_LINE, 0, std::max(2, static_cast<int>(8 * zoomScale * treeGrowthScale)));
 
-            // Apply the EXACT SAME formula to the seed as the ground
-            int drawX = static_cast<int>((currentX + cameraOffsetX) * zoomScale);
-            int drawY = static_cast<int>((currentY + cameraOffsetY) * zoomScale);
+            // It grows from the seed (anchorY) upward to the surface (surfaceY)
+            int connectorTopY = anchorY - static_cast<int>((anchorY - surfaceY) * treeGrowthScale);
+            line(anchorX, anchorY, anchorX, connectorTopY);
 
-            drawSeed(drawX, drawY, currentAngle, currentScale);
-
-            // --- FIX: DRAW SPROUT (Phase 0) ---
-            if (animationPhase == 0 && phaseTimer > 20) {
-                setcolor(LIGHT_GREEN);
-                setlinestyle(SOLID_LINE, 0, 2);
-                double sproutProgress = (phaseTimer - 20) / 20.0;
-                int sproutLength = static_cast<int>(sproutProgress * 20 * zoomScale);
-                line(drawX, drawY, drawX, drawY - sproutLength);
-            }
-
-            // Draw Seedling (Phase 1)
-            if (animationPhase == 1) {
-                double leafProgress = phaseTimer / 60.0;
-                int leafDrawX = static_cast<int>((seedX + cameraOffsetX) * zoomScale);
-
-                // Seedling grows from the seed position
-                int leafDrawY = static_cast<int>((seedY + cameraOffsetY) * zoomScale);
-
-                drawSeedlingLeaves(leafDrawX, leafDrawY, leafProgress);
-            }
-            // -------------------------------------------
+            // B. THE WIDE HORIZONTAL ROOTS
+            // These start at the seed and spread sideways
+            setcolor(COLOR(190, 150, 100));  // Visible light-tan color
+            drawRoot(anchorX, anchorY, 70.0 * zoomScale, PI / 2.0, 4, treeGrowthScale);
         }
 
-        // Tree Drawing
-        if (animationPhase >= 2 || (animationPhase == 1 && phaseTimer > 50)) {
-            double blendFactor = (animationPhase == 1) ? (phaseTimer - 50) / 10.0 : 1.0;
+        // 5. THE TRANSFORMING SEED
+        if (animationPhase <= 2 || animationPhase >= 4) {
+            if (!fallingSeeds.empty() && fallingSeeds[0].active) {
+                // Falling animation
+                int fallX = static_cast<int>((fallingSeeds[0].x + cameraOffsetX) * zoomScale);
+                int fallY = static_cast<int>((fallingSeeds[0].y + cameraOffsetY) * zoomScale);
+                drawSeed(fallX, fallY, fallingSeeds[0].angle, zoomScale);
+            } else {
+                // Morphing: Seed shrinks as treeGrowthScale increases
+                double morphFactor = std::max(0.0, 1.0 - treeGrowthScale);
+                if (morphFactor > 0.01) {
+                    double finalSeedScale = (animationPhase == 0 ? 1.0 + phaseTimer / 20.0 : 2.0) * morphFactor * zoomScale;
+                    drawSeed(anchorX, anchorY, 0, finalSeedScale);
+                }
+            }
+        }
 
-            int startX = static_cast<int>((seedX + cameraOffsetX) * zoomScale);
-            int startY = visualGroundY;  // Perfectly locked to the soil
+        // 6. SEEDLING LEAVES (Phase 0 and 1)
+        if (animationPhase == 0 && phaseTimer > 20) {
+            setcolor(LIGHT_GREEN);
+            double sproutProgress = (phaseTimer - 20) / 20.0;
+            int sproutLength = static_cast<int>(sproutProgress * 20 * zoomScale);
+            line(anchorX, anchorY, anchorX, anchorY - sproutLength);
+        }
+
+        if (animationPhase == 1) {
+            drawSeedlingLeaves(anchorX, anchorY, phaseTimer / 60.0);
+        }
+
+        // 7. THE MAIN TREE TRUNK (Phase 2 onwards)
+        if (animationPhase >= 2 || (animationPhase == 1 && phaseTimer > 55)) {
+            setcolor(DARK_BROWN);
+            double blendFactor = (animationPhase == 1) ? (phaseTimer - 55) / 5.0 : 1.0;
 
             if (treeGrowthScale > 0.01) {
-                drawBranch(startX, startY, 150 * zoomScale, PI / 2, 5, treeGrowthScale * blendFactor, treeGrowthScale * blendFactor);
+                // Starts at surfaceY, perfectly meeting the Vertical Connector
+                drawBranch(anchorX, surfaceY, 150 * zoomScale, PI / 2.0, 5, treeGrowthScale * blendFactor, treeGrowthScale);
             }
         }
 
+        // 8. FINALIZATION
         displayPhaseInfo();
         setvisualpage(getactivepage());
     }
