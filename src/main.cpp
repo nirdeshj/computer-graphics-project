@@ -380,7 +380,7 @@ class AnimatedTreeDrawer {
     void drawRoot(int x1, int y1, double length, double angle, int depth, double growthProgress, int surfaceLimitY) {
         if (depth <= 0 || growthProgress <= 0) return;
 
-        // Use the earthy brown we established
+        // Earthy brown colors
         int rootColor = (depth > 3) ? COLOR(140, 100, 60) : COLOR(190, 150, 100);
         setcolor(rootColor);
 
@@ -388,10 +388,12 @@ class AnimatedTreeDrawer {
         setlinestyle(SOLID_LINE, 0, thickness);
 
         double currentLength = length * growthProgress;
+
+        // Horizontal stretch (1.3) and vertical compression (0.5) for an organic spread
         int x2 = x1 + static_cast<int>(currentLength * cos(angle) * 1.3);
         int y2 = y1 + static_cast<int>(currentLength * sin(angle) * 0.5);
 
-        // Keep everything below ground
+        // Surface Guard
         int drawY1 = std::max(y1, surfaceLimitY);
         int drawY2 = std::max(y2, surfaceLimitY);
 
@@ -400,21 +402,21 @@ class AnimatedTreeDrawer {
         }
 
         if (depth > 1) {
-            // 1. Standard Downward Roots
+            // 1. Standard Downward Roots (The deep system)
             drawRoot(x2, y2, length * 0.65, angle + 0.3, depth - 1, growthProgress, surfaceLimitY);
             drawRoot(x2, y2, length * 0.65, angle - 0.3, depth - 1, growthProgress, surfaceLimitY);
 
-            // 2. Standard Lateral Roots
-            drawRoot(x2, y2, length * 0.6, angle + 1.3, depth - 1, growthProgress, surfaceLimitY);
-            drawRoot(x2, y2, length * 0.6, angle - 1.3, depth - 1, growthProgress, surfaceLimitY);
+            // 2. Standard Lateral Roots (Side spread)
+            drawRoot(x2, y2, length * 0.8, angle + 1.3, depth - 1, growthProgress, surfaceLimitY);
+            drawRoot(x2, y2, length * 0.8, angle - 1.3, depth - 1, growthProgress, surfaceLimitY);
 
-            // --- NEW: SURFACE ROOTS (Only at the base) ---
-            // If we are at the top depth, add two extra branches that stay very close to the surface
+            // --- THE TWO NEW SURFACE BRANCHES (Angled slightly below) ---
             if (depth == 4) {
-                // Left surface root (shallow angle)
-                drawRoot(x1, y1, length * 1.1, PI + 0.1, depth - 2, growthProgress, surfaceLimitY);
-                // Right surface root (shallow angle)
-                drawRoot(x1, y1, length * 1.1, 0.0 - 0.1, depth - 2, growthProgress, surfaceLimitY);
+                // Right-side surface root: 0.2 is slightly "down" from horizontal
+                drawRoot(x1, y1, length * 1.2, 0.2, depth - 2, growthProgress, surfaceLimitY);
+
+                // Left-side surface root: PI - 0.2 is slightly "down" from the left horizontal
+                drawRoot(x1, y1, length * 1.2, PI - 0.2, depth - 2, growthProgress, surfaceLimitY);
             }
         }
     }
@@ -661,7 +663,7 @@ class AnimatedTreeDrawer {
         if (!newSeedHasLanded) {
             // --- ROOTS & CONNECTOR ---
             if (animationPhase >= 1 && animationPhase <= 4) {
-                setcolor(COLOR(160, 100, 50));
+                setcolor(COLOR(140, 100, 60));
                 int connectionWidth = std::max(1, static_cast<int>(5 * zoomScale * treeGrowthScale));
                 setlinestyle(SOLID_LINE, 0, connectionWidth);
 
