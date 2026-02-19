@@ -405,8 +405,8 @@ class AnimatedTreeDrawer {
             drawRoot(x2, y2, length * 0.65, angle - 0.3, depth - 1, growthProgress, surfaceLimitY);
 
             // 2. Standard Lateral Roots
-            drawRoot(x2, y2, length * 0.4, angle + 1.3, depth - 1, growthProgress, surfaceLimitY);
-            drawRoot(x2, y2, length * 0.4, angle - 1.3, depth - 1, growthProgress, surfaceLimitY);
+            drawRoot(x2, y2, length * 0.6, angle + 1.3, depth - 1, growthProgress, surfaceLimitY);
+            drawRoot(x2, y2, length * 0.6, angle - 1.3, depth - 1, growthProgress, surfaceLimitY);
 
             // --- NEW: SURFACE ROOTS (Only at the base) ---
             // If we are at the top depth, add two extra branches that stay very close to the surface
