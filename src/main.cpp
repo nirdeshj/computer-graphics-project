@@ -380,11 +380,10 @@ class AnimatedTreeDrawer {
     void drawRoot(int x1, int y1, double length, double angle, int depth, double growthProgress, int surfaceLimitY) {
         if (depth <= 0 || growthProgress <= 0) return;
 
-        // Use a lighter, more "earthy" brown for the roots to distinguish from the dark trunk
+        // Use the earthy brown we established
         int rootColor = (depth > 3) ? COLOR(140, 100, 60) : COLOR(190, 150, 100);
         setcolor(rootColor);
 
-        // Thickness slightly reduced to prevent "blocky" artifacts at the seed point
         int thickness = std::max(1, static_cast<int>(depth * depth * 0.35 * zoomScale * growthProgress));
         setlinestyle(SOLID_LINE, 0, thickness);
 
@@ -392,6 +391,7 @@ class AnimatedTreeDrawer {
         int x2 = x1 + static_cast<int>(currentLength * cos(angle) * 1.3);
         int y2 = y1 + static_cast<int>(currentLength * sin(angle) * 0.5);
 
+        // Keep everything below ground
         int drawY1 = std::max(y1, surfaceLimitY);
         int drawY2 = std::max(y2, surfaceLimitY);
 
@@ -400,10 +400,22 @@ class AnimatedTreeDrawer {
         }
 
         if (depth > 1) {
+            // 1. Standard Downward Roots
             drawRoot(x2, y2, length * 0.65, angle + 0.3, depth - 1, growthProgress, surfaceLimitY);
             drawRoot(x2, y2, length * 0.65, angle - 0.3, depth - 1, growthProgress, surfaceLimitY);
-            drawRoot(x2, y2, length * 0.8, angle + 1.3, depth - 1, growthProgress, surfaceLimitY);
-            drawRoot(x2, y2, length * 0.8, angle - 1.3, depth - 1, growthProgress, surfaceLimitY);
+
+            // 2. Standard Lateral Roots
+            drawRoot(x2, y2, length * 0.4, angle + 1.3, depth - 1, growthProgress, surfaceLimitY);
+            drawRoot(x2, y2, length * 0.4, angle - 1.3, depth - 1, growthProgress, surfaceLimitY);
+
+            // --- NEW: SURFACE ROOTS (Only at the base) ---
+            // If we are at the top depth, add two extra branches that stay very close to the surface
+            if (depth == 4) {
+                // Left surface root (shallow angle)
+                drawRoot(x1, y1, length * 1.1, PI + 0.1, depth - 2, growthProgress, surfaceLimitY);
+                // Right surface root (shallow angle)
+                drawRoot(x1, y1, length * 1.1, 0.0 - 0.1, depth - 2, growthProgress, surfaceLimitY);
+            }
         }
     }
 
@@ -600,7 +612,7 @@ class AnimatedTreeDrawer {
     void render() {
         setactivepage(1 - getactivepage());
 
-        // 1. SKY LOGIC
+        // 1. ENVIRONMENT (Sky, Sun, Clouds)
         int r = 100 - static_cast<int>(50 * -sin(sunAngle));
         int g = 170 - static_cast<int>(100 * -sin(sunAngle));
         int b = 200 - static_cast<int>(80 * -sin(sunAngle));
@@ -613,12 +625,12 @@ class AnimatedTreeDrawer {
         drawSun();
         drawClouds();
 
-        // 2. UNIFIED COORDINATE TRANSFORMATIONS
+        // 2. COORDINATE TRANSFORMATIONS
         int visualGroundY = static_cast<int>((groundLevel + cameraOffsetY) * zoomScale);
         int anchorX = static_cast<int>((seedX + cameraOffsetX) * zoomScale);
         int anchorY = static_cast<int>((seedY + cameraOffsetY) * zoomScale);
 
-        // 3. SEAMLESS SOIL
+        // 3. SOIL (The furthest background layer)
         int tempGround = groundLevel;
         groundLevel = visualGroundY;
         drawSoil();
@@ -635,11 +647,21 @@ class AnimatedTreeDrawer {
             }
         }
 
-        // 5. THE PARENT TREE & ROOT SYSTEM
+        // --- 5. FALLING SEEDS (Drawn BEHIND the tree) ---
+        // Moving this here ensures branches/leaves are drawn over the falling seeds.
+        for (const auto& s : fallingSeeds) {
+            int sx = static_cast<int>((s.x + cameraOffsetX) * zoomScale);
+            int sy = static_cast<int>((s.y + cameraOffsetY) * zoomScale);
+
+            // We draw them even if active or landed to ensure seamless transition
+            drawSeed(sx, sy, s.angle, 1.2 * zoomScale);
+        }
+
+        // 6. THE PARENT TREE & ROOT SYSTEM (Drawn IN FRONT of falling seeds)
         if (!newSeedHasLanded) {
             // --- ROOTS & CONNECTOR ---
             if (animationPhase >= 1 && animationPhase <= 4) {
-                setcolor(COLOR(140, 100, 60));
+                setcolor(COLOR(160, 100, 50));
                 int connectionWidth = std::max(1, static_cast<int>(5 * zoomScale * treeGrowthScale));
                 setlinestyle(SOLID_LINE, 0, connectionWidth);
 
@@ -651,6 +673,7 @@ class AnimatedTreeDrawer {
             }
 
             // --- TRUNK & CANOPY ---
+            // This is the main visual body that will now occlude the seeds
             if (animationPhase >= 2 || (animationPhase == 1 && phaseTimer > 50)) {
                 double blendFactor = (animationPhase == 1) ? (phaseTimer - 50) / 10.0 : 1.0;
                 setcolor(DARK_BROWN);
@@ -660,9 +683,7 @@ class AnimatedTreeDrawer {
             }
 
             // --- THE VANISHING INITIAL SEED ---
-            // Logic: Shrink to 0 based on tree growth and stay gone.
             if (animationPhase <= 2) {
-                // Multiplier 5.0 ensures the seed is gone by the time tree reaches 20% growth
                 double morphFactor = std::max(0.0, 1.0 - (treeGrowthScale * 5.0));
 
                 if (morphFactor > 0.01) {
@@ -682,16 +703,6 @@ class AnimatedTreeDrawer {
             if (animationPhase == 1) {
                 drawSeedlingLeaves(anchorX, anchorY, phaseTimer / 60.0);
             }
-        }
-
-        // 6. THE NEW GENERATION (FALLING SEEDS)
-        // These seeds are always drawn using their specific world coordinates
-        for (const auto& s : fallingSeeds) {
-            int sx = static_cast<int>((s.x + cameraOffsetX) * zoomScale);
-            int sy = static_cast<int>((s.y + cameraOffsetY) * zoomScale);
-
-            // New seeds drop from canopy at a fixed scale
-            drawSeed(sx, sy, s.angle, 1.2 * zoomScale);
         }
 
         displayPhaseInfo();
