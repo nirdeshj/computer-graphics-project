@@ -449,16 +449,35 @@ class AnimatedTreeDrawer {
                 if (!fallingSeeds.empty()) {
                     Seed& s = fallingSeeds[0];
 
-                    // Smooth cinematic zoom in
+                    // 1. Keep your original cinematic zoom speed
                     if (zoomScale < 8.0) zoomScale += 0.05;
 
-                    // CENTER THE CAMERA ON SEED
-                    cameraOffsetX = (screenWidth / 2.0 / zoomScale) - s.x;
-                    cameraOffsetY = (screenHeight / 2.0 / zoomScale) - s.y;
+                    // 2. Define the starting focus (Center of Tree) and target focus (Seed)
+                    double startFocusX = screenWidth / 2.0;
+                    double startFocusY = screenHeight / 2.0;
+                    double targetFocusX = s.x;
+                    double targetFocusY = s.y;
 
-                    // CHANGE: Trigger Phase 5 immediately once seed is buried and stopped
+                    // 3. Calculate camera panning progress (0.0 to 1.0)
+                    // Using phaseTimer / 80.0 means the pan finishes smoothly around frame 80,
+                    // ensuring the camera locks onto the seed while it's still in the air.
+                    double panProgress = std::min(1.0, phaseTimer / 80.0);
+
+                    // Add a cinematic "ease-out" curve. The pan moves fast initially to catch
+                    // the seed, then gently slows down as it locks on.
+                    double ease = 1.0 - pow(1.0 - panProgress, 3);
+
+                    // 4. Calculate the current point the camera should look at
+                    double currentFocusX = startFocusX + (targetFocusX - startFocusX) * ease;
+                    double currentFocusY = startFocusY + (targetFocusY - startFocusY) * ease;
+
+                    // 5. THE MAGIC FORMULA: Keep currentFocus perfectly centered at the current zoomScale
+                    cameraOffsetX = (screenWidth / 2.0 / zoomScale) - currentFocusX;
+                    cameraOffsetY = (screenHeight / 2.0 / zoomScale) - currentFocusY;
+
+                    // Trigger Phase 5 once landed
                     if (s.y >= groundLevel + 25) {
-                        // Wait for a small pause before zooming out (about 1 second)
+                        // Wait for a small pause before zooming out
                         if (phaseTimer > 100) {
                             animationPhase = 5;
                             phaseTimer = 0;
@@ -590,7 +609,7 @@ class AnimatedTreeDrawer {
             int startY = visualGroundY;  // Perfectly locked to the soil
 
             if (treeGrowthScale > 0.01) {
-                drawBranch(startX, startY, 150 * zoomScale, 3.14159 / 2, 6, treeGrowthScale * blendFactor, treeGrowthScale * blendFactor);
+                drawBranch(startX, startY, 150 * zoomScale, 3.14159 / 2, 5, treeGrowthScale * blendFactor, treeGrowthScale * blendFactor);
             }
         }
 
