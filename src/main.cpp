@@ -359,24 +359,28 @@ class AnimatedTreeDrawer {
     void drawRoot(int x1, int y1, double length, double angle, int depth, double growthProgress) {
         if (depth <= 0 || growthProgress <= 0) return;
 
+        // Woody tan color for visibility
         int rootColor = COLOR(190, 150, 100);
         setcolor(rootColor);
-        setlinestyle(SOLID_LINE, 0, std::max(1, static_cast<int>(depth * zoomScale * 0.6)));
+
+        // Smooth thickness scaling to prevent blocky artifacts
+        int thickness = std::max(1, static_cast<int>(depth * zoomScale * 0.5));
+        setlinestyle(SOLID_LINE, 0, thickness);
 
         double currentLength = length * growthProgress;
 
-        // MATH FIX:
-        // Increase cos (Horizontal) multiplier to 1.5
-        // Decrease sin (Vertical) multiplier to 0.25
-        int x2 = x1 + static_cast<int>(currentLength * cos(angle) * 1.5);
-        int y2 = y1 + static_cast<int>(currentLength * sin(angle) * 0.25);
+        // Horizontal stretch (1.6) and Vertical squash (0.2)
+        int x2 = x1 + static_cast<int>(currentLength * cos(angle) * 1.6);
+        int y2 = y1 + static_cast<int>(currentLength * sin(angle) * 0.2);
 
         line(x1, y1, x2, y2);
 
         if (depth > 1) {
-            // Very wide angle (1.4 radians) ensures they stay flat
-            drawRoot(x2, y2, length * 0.7, angle + 1.4, depth - 1, growthProgress);
-            drawRoot(x2, y2, length * 0.7, angle - 1.4, depth - 1, growthProgress);
+            // We now branch into 3 directions instead of 2 for more density
+            // Spread angles are wide to prevent "going straight to the bottom"
+            drawRoot(x2, y2, length * 0.65, angle + 1.2, depth - 1, growthProgress);  // Left-ish
+            drawRoot(x2, y2, length * 0.65, angle - 1.2, depth - 1, growthProgress);  // Right-ish
+            drawRoot(x2, y2, length * 0.5, angle + 0.2, depth - 1, growthProgress);   // Slight center-down
         }
     }
 
@@ -573,90 +577,73 @@ class AnimatedTreeDrawer {
     void render() {
         setactivepage(1 - getactivepage());
 
-        // 1. SKY AND ATMOSPHERE CALCULATION
+        // 1. SKY AND ATMOSPHERE
         int r = 100 - static_cast<int>(50 * -sin(sunAngle));
         int g = 170 - static_cast<int>(100 * -sin(sunAngle));
         int b = 200 - static_cast<int>(80 * -sin(sunAngle));
-        r = std::max(0, std::min(255, r));
-        g = std::max(0, std::min(255, g));
-        b = std::max(0, std::min(255, b));
-        setbkcolor(COLOR(r, g, b));
+        setbkcolor(COLOR(std::max(0, std::min(255, r)), std::max(0, std::min(255, g)), std::max(0, std::min(255, b))));
         cleardevice();
 
         drawSun();
         drawClouds();
 
-        // 2. GROUND/SOIL DRAWING
-        // Calculate visual surface Y in screen space
+        // 2. COORDINATES
         int surfaceY = static_cast<int>((groundLevel + cameraOffsetY) * zoomScale);
-
-        int tempGround = groundLevel;
-        groundLevel = surfaceY;  // Temporarily update for drawSoil
-        drawSoil();
-        groundLevel = tempGround;
-
-        // 3. ANCHOR COORDINATES (Screen Space)
         int anchorX = static_cast<int>((seedX + cameraOffsetX) * zoomScale);
         int anchorY = static_cast<int>((seedY + cameraOffsetY) * zoomScale);
 
-        // 4. DRAW ROOTS AND CONNECTORS (Phases 1-4)
-        if (animationPhase >= 1 && animationPhase <= 4) {
-            // A. THE VERTICAL CONNECTOR (Taproot)
-            // This links the buried seed up to the surface where the trunk starts.
-            setcolor(DARK_BROWN);
-            setlinestyle(SOLID_LINE, 0, std::max(2, static_cast<int>(8 * zoomScale * treeGrowthScale)));
+        // 3. DRAW SOIL
+        int tempGround = groundLevel;
+        groundLevel = surfaceY;
+        drawSoil();
+        groundLevel = tempGround;
 
-            // It grows from the seed (anchorY) upward to the surface (surfaceY)
+        // 4. DRAW ROOTS AND THE "TREE BASE" CONNECTOR
+        if (animationPhase >= 1 && animationPhase <= 4) {
+            // A. THE CONNECTOR (Taproot/Collar)
+            // This bridges the buried seed to the surface trunk base
+            setcolor(DARK_BROWN);
+            // Reduced max thickness to avoid the "rectangle block" look
+            int connectorThickness = std::max(2, static_cast<int>(6 * zoomScale * treeGrowthScale));
+            setlinestyle(SOLID_LINE, 0, connectorThickness);
+
             int connectorTopY = anchorY - static_cast<int>((anchorY - surfaceY) * treeGrowthScale);
             line(anchorX, anchorY, anchorX, connectorTopY);
 
-            // B. THE WIDE HORIZONTAL ROOTS
-            // These start at the seed and spread sideways
-            setcolor(COLOR(190, 150, 100));  // Visible light-tan color
-            drawRoot(anchorX, anchorY, 70.0 * zoomScale, PI / 2.0, 4, treeGrowthScale);
+            // B. THE SPREADING ROOTS
+            // Starting from the seed (anchorY) and spreading out
+            drawRoot(anchorX, anchorY, 80.0 * zoomScale, PI / 2.0, 4, treeGrowthScale);
         }
 
-        // 5. THE TRANSFORMING SEED
+        // 5. THE SEED
         if (animationPhase <= 2 || animationPhase >= 4) {
-            if (!fallingSeeds.empty() && fallingSeeds[0].active) {
-                // Falling animation
-                int fallX = static_cast<int>((fallingSeeds[0].x + cameraOffsetX) * zoomScale);
-                int fallY = static_cast<int>((fallingSeeds[0].y + cameraOffsetY) * zoomScale);
-                drawSeed(fallX, fallY, fallingSeeds[0].angle, zoomScale);
-            } else {
-                // Morphing: Seed shrinks as treeGrowthScale increases
-                double morphFactor = std::max(0.0, 1.0 - treeGrowthScale);
-                if (morphFactor > 0.01) {
-                    double finalSeedScale = (animationPhase == 0 ? 1.0 + phaseTimer / 20.0 : 2.0) * morphFactor * zoomScale;
-                    drawSeed(anchorX, anchorY, 0, finalSeedScale);
-                }
+            double morphFactor = std::max(0.0, 1.0 - treeGrowthScale);
+            if (morphFactor > 0.01) {
+                double finalScale = (animationPhase == 0 ? 1.0 + phaseTimer / 20.0 : 2.0) * morphFactor * zoomScale;
+                drawSeed(anchorX, anchorY, 0, finalScale);
             }
         }
 
-        // 6. SEEDLING LEAVES (Phase 0 and 1)
+        // 6. SPROUT / LEAVES
         if (animationPhase == 0 && phaseTimer > 20) {
             setcolor(LIGHT_GREEN);
-            double sproutProgress = (phaseTimer - 20) / 20.0;
-            int sproutLength = static_cast<int>(sproutProgress * 20 * zoomScale);
-            line(anchorX, anchorY, anchorX, anchorY - sproutLength);
+            int sproutLen = static_cast<int>((phaseTimer - 20) / 20.0 * 20 * zoomScale);
+            line(anchorX, anchorY, anchorX, anchorY - sproutLen);
         }
-
         if (animationPhase == 1) {
             drawSeedlingLeaves(anchorX, anchorY, phaseTimer / 60.0);
         }
 
-        // 7. THE MAIN TREE TRUNK (Phase 2 onwards)
+        // 7. THE TRUNK (Perfectly connected to the Connector)
         if (animationPhase >= 2 || (animationPhase == 1 && phaseTimer > 55)) {
             setcolor(DARK_BROWN);
-            double blendFactor = (animationPhase == 1) ? (phaseTimer - 55) / 5.0 : 1.0;
-
+            double blend = (animationPhase == 1) ? (phaseTimer - 55) / 5.0 : 1.0;
             if (treeGrowthScale > 0.01) {
-                // Starts at surfaceY, perfectly meeting the Vertical Connector
-                drawBranch(anchorX, surfaceY, 150 * zoomScale, PI / 2.0, 5, treeGrowthScale * blendFactor, treeGrowthScale);
+                // Trunk starts exactly at surfaceY where the connector ends
+                drawBranch(anchorX, surfaceY, 150 * zoomScale, PI / 2.0, 5, treeGrowthScale * blend, treeGrowthScale);
             }
         }
 
-        // 8. FINALIZATION
         displayPhaseInfo();
         setvisualpage(getactivepage());
     }
