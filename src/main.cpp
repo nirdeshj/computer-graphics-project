@@ -615,7 +615,7 @@ class AnimatedTreeDrawer {
         if (animationPhase >= 1 && animationPhase <= 4) {
             // --- THE "BASE STICK" (Upward Connector) ---
             // Using COLOR(120, 80, 40) - slightly lighter/redder than DARK_BROWN for distinction
-            setcolor(COLOR(156, 101, 48));
+            setcolor(COLOR(160, 100, 50));
 
             // Slightly thinner than the trunk to avoid the "blocky" rectangular artifact
             int connectionWidth = std::max(1, static_cast<int>(5 * zoomScale * treeGrowthScale));
