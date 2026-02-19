@@ -14,7 +14,7 @@ struct Seed {
     double x, y;
     double angle;
     double velocityY;
-    double velocityX;  // ADD THIS
+    double velocityX;
     bool active;
 };
 
@@ -24,7 +24,7 @@ class AnimatedTreeDrawer {
     int groundLevel;
     int seedX, seedY;
     std::chrono::steady_clock::time_point lastTime;
-    double sunAngle;  // for moving sun
+    double sunAngle;
 
     // Animation state variables
     double treeGrowthScale;
@@ -40,6 +40,7 @@ class AnimatedTreeDrawer {
     double cameraOffsetX, cameraOffsetY;
 
     // Colors
+    const double PI = 3.141592654;
     const int BROWN = COLOR(139, 69, 19);
     const int DARK_BROWN = COLOR(101, 67, 33);
     const int LEAF_GREEN = COLOR(34, 139, 34);
@@ -62,7 +63,7 @@ class AnimatedTreeDrawer {
         int points[numPoints * 2];
 
         for (int i = 0; i < numPoints; i++) {
-            double t = i * 2 * 3.14159 / numPoints;
+            double t = i * 2 * PI / numPoints;
             // Oval shape (wider than tall)
             double localX = size * cos(t);
             double localY = size * 0.5 * sin(t);
@@ -210,7 +211,7 @@ class AnimatedTreeDrawer {
         setfillstyle(SOLID_FILL, COLOR(255, 192, 203));
 
         for (int i = 0; i < 5; i++) {
-            double angle = i * 2 * 3.14159 / 5;
+            double angle = i * 2 * PI / 5;
             int petalX = x + static_cast<int>(petalSize * cos(angle));
             int petalY = y + static_cast<int>(petalSize * sin(angle));
             fillellipse(petalX, petalY, petalSize, petalSize);
@@ -229,7 +230,7 @@ class AnimatedTreeDrawer {
     void drawSun() {
         int radius = 30;
         int skyHeight = 150;
-        int sunX = static_cast<int>(screenWidth * sunAngle / 3.14159);
+        int sunX = static_cast<int>(screenWidth * sunAngle / PI);
         int sunY = static_cast<int>(skyHeight * sin(sunAngle)) + 50;
 
         setcolor(YELLOW);
@@ -237,7 +238,7 @@ class AnimatedTreeDrawer {
         fillellipse(sunX, sunY, radius, radius);
 
         for (int i = 0; i < 12; i++) {
-            double angle = i * 30 * 3.14159 / 180.0;
+            double angle = i * 30 * PI / 180.0;
             int x1 = sunX + static_cast<int>((radius + 5) * cos(angle));
             int y1 = sunY + static_cast<int>((radius + 5) * sin(angle));
             int x2 = sunX + static_cast<int>((radius + 20) * cos(angle));
@@ -282,7 +283,7 @@ class AnimatedTreeDrawer {
                 // We want the angle to be a multiple of 2*PI (6.28) when distance is 0.
                 // We force the angle to "align" as it gets closer.
                 // This formula spins fast when high, and aligns perfectly as it hits 0.
-                seed.angle = (distanceToGround / 35.0) + (3.14159 * 4);
+                seed.angle = (distanceToGround / 35.0) + (PI * 4);
             } else {
                 // GROUND PHASE - HARD LOCK
                 // The moment we touch ground, we force Angle to 0.
@@ -402,7 +403,7 @@ class AnimatedTreeDrawer {
     }
 
     void update() {
-        phaseTimer += 1;
+        phaseTimer += 3;
 
         switch (animationPhase) {
             case 0:  // Seed germination (0-40 frames)
@@ -542,7 +543,7 @@ class AnimatedTreeDrawer {
         lastTime = currentTime;
 
         sunAngle += 0.5 * elapsedSeconds;  // radians per second
-        if (sunAngle > 2 * 3.14159) sunAngle -= 2 * 3.14159;
+        if (sunAngle > 2 * PI) sunAngle -= 2 * PI;
     }
 
     void render() {
@@ -620,11 +621,12 @@ class AnimatedTreeDrawer {
         // Tree Drawing
         if (animationPhase >= 2 || (animationPhase == 1 && phaseTimer > 50)) {
             double blendFactor = (animationPhase == 1) ? (phaseTimer - 50) / 10.0 : 1.0;
+
             int startX = static_cast<int>((seedX + cameraOffsetX) * zoomScale);
             int startY = visualGroundY;  // Perfectly locked to the soil
 
             if (treeGrowthScale > 0.01) {
-                drawBranch(startX, startY, 150 * zoomScale, 3.14159 / 2, 5, treeGrowthScale * blendFactor, treeGrowthScale * blendFactor);
+                drawBranch(startX, startY, 150 * zoomScale, PI / 2, 5, treeGrowthScale * blendFactor, treeGrowthScale * blendFactor);
             }
         }
 
