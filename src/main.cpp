@@ -48,7 +48,6 @@ class AnimatedTreeDrawer {
     const int SKY_BLUE = COLOR(135, 206, 235);
     const int SOIL_BROWN = COLOR(90, 50, 20);
 
-    // Draw a seed with rotation
     void drawSeed(int x, int y, double angle, double scale = 1.0) {
         int oldColor = getcolor();
 
@@ -204,29 +203,47 @@ class AnimatedTreeDrawer {
     void drawFlower(int x, int y, double scale) {
         if (scale <= 0) return;
 
-        // Save the color so the branches don't turn yellow!
         int oldColor = getcolor();
 
-        // Size reduced: Changed petal size from 4 to 2 for smaller blossoms
-        int petalSize = static_cast<int>(3 * scale);
+        // We keep your original base size intact so it doesn't break the tree's proportions
+        int baseSize = std::max(2, static_cast<int>(3 * scale));
 
-        // Draw Petals (Pink)
-        setcolor(COLOR(255, 192, 203));
-        setfillstyle(SOLID_FILL, COLOR(255, 192, 203));
+        // --- COLORS (Canopy / Poppy Style) ---
+        // Canopy blossoms are usually creamy white or pale blush
+        int shadowPetalColor = COLOR(240, 220, 210);  // Slightly darker for depth
+        int frontPetalColor = COLOR(255, 245, 238);   // Creamy Seashell White
+        int centerDark = COLOR(139, 0, 0);            // Deep maroon "poppy" center
+        int centerLight = YELLOW;                     // Bright pollen dot
 
-        for (int i = 0; i < 5; i++) {
-            double angle = i * 2 * PI / 5;
-            int petalX = x + static_cast<int>(petalSize * cos(angle));
-            int petalY = y + static_cast<int>(petalSize * sin(angle));
-            fillellipse(petalX, petalY, petalSize, petalSize);
-        }
+        // --- DRAWING THE POPPY SHAPE ---
+        // A poppy has 4 broad, overlapping petals forming a cup/cross shape.
 
-        // Draw Center (Yellow)
-        setcolor(YELLOW);
-        setfillstyle(SOLID_FILL, YELLOW);
-        fillellipse(x, y, std::max(1, petalSize / 2), std::max(1, petalSize / 2));
+        // 1. Back Petals (Vertical-ish) - Drawn slightly darker for a 3D shadow effect
+        setcolor(shadowPetalColor);
+        setfillstyle(SOLID_FILL, shadowPetalColor);
+        fillellipse(x, y - baseSize, baseSize + 1, baseSize + 2);  // Top petal
+        fillellipse(x, y + baseSize, baseSize + 1, baseSize + 2);  // Bottom petal
 
-        // Restore the branch color
+        // 2. Front Petals (Horizontal-ish) - Lighter color, drawn on top
+        setcolor(frontPetalColor);
+        setfillstyle(SOLID_FILL, frontPetalColor);
+        fillellipse(x - baseSize, y, baseSize + 2, baseSize + 1);  // Left petal
+        fillellipse(x + baseSize, y, baseSize + 2, baseSize + 1);  // Right petal
+
+        // 3. The Dark Poppy Center
+        // Poppies are famous for their high-contrast, dark middle
+        setcolor(centerDark);
+        setfillstyle(SOLID_FILL, centerDark);
+        int centerRadius = std::max(1, (baseSize / 2) + 1);
+        fillellipse(x, y, centerRadius, centerRadius);
+
+        // 4. The Pollen Dot (Pistil)
+        setcolor(centerLight);
+        setfillstyle(SOLID_FILL, centerLight);
+        int dotRadius = std::max(1, baseSize / 3);
+        fillellipse(x, y, dotRadius, dotRadius);
+
+        // Restore the original color so the branches don't turn white!
         setcolor(oldColor);
     }
 
@@ -583,71 +600,98 @@ class AnimatedTreeDrawer {
     void render() {
         setactivepage(1 - getactivepage());
 
-        // 1. ENVIRONMENT
+        // 1. SKY LOGIC
         int r = 100 - static_cast<int>(50 * -sin(sunAngle));
         int g = 170 - static_cast<int>(100 * -sin(sunAngle));
         int b = 200 - static_cast<int>(80 * -sin(sunAngle));
-        setbkcolor(COLOR(std::max(0, std::min(255, r)), std::max(0, std::min(255, g)), std::max(0, std::min(255, b))));
+        r = std::max(0, std::min(255, r));
+        g = std::max(0, std::min(255, g));
+        b = std::max(0, std::min(255, b));
+        setbkcolor(COLOR(r, g, b));
         cleardevice();
+
         drawSun();
         drawClouds();
 
-        // 2. COORDINATES
-        int surfaceY = static_cast<int>((groundLevel + cameraOffsetY) * zoomScale);
+        // 2. UNIFIED COORDINATE TRANSFORMATIONS
+        int visualGroundY = static_cast<int>((groundLevel + cameraOffsetY) * zoomScale);
         int anchorX = static_cast<int>((seedX + cameraOffsetX) * zoomScale);
         int anchorY = static_cast<int>((seedY + cameraOffsetY) * zoomScale);
 
         // 3. SEAMLESS SOIL
         int tempGround = groundLevel;
-        groundLevel = surfaceY;
+        groundLevel = visualGroundY;
         drawSoil();
         groundLevel = tempGround;
 
-        // 4. THE CANOPY TREE (Trunk) - Drawn first so roots can overlap it naturally
-        if (animationPhase >= 2 || (animationPhase == 1 && phaseTimer > 55)) {
-            setcolor(DARK_BROWN);
-            if (treeGrowthScale > 0.01) {
-                drawBranch(anchorX, surfaceY, 150 * zoomScale, PI / 2.0, 5, treeGrowthScale, treeGrowthScale);
+        // 4. CHECK FOR NEW GENERATION
+        bool newSeedHasLanded = false;
+        if (!fallingSeeds.empty()) {
+            for (const auto& s : fallingSeeds) {
+                if (!s.active && s.y >= groundLevel - 1) {
+                    newSeedHasLanded = true;
+                    break;
+                }
             }
         }
 
-        // 5. BIOLOGICAL ROOT SYSTEM & CONNECTOR
-        if (animationPhase >= 1 && animationPhase <= 4) {
-            // --- THE "BASE STICK" (Upward Connector) ---
-            // Using COLOR(120, 80, 40) - slightly lighter/redder than DARK_BROWN for distinction
-            setcolor(COLOR(160, 100, 50));
+        // 5. THE PARENT TREE & ROOT SYSTEM
+        if (!newSeedHasLanded) {
+            // --- ROOTS & CONNECTOR ---
+            if (animationPhase >= 1 && animationPhase <= 4) {
+                setcolor(COLOR(140, 100, 60));
+                int connectionWidth = std::max(1, static_cast<int>(5 * zoomScale * treeGrowthScale));
+                setlinestyle(SOLID_LINE, 0, connectionWidth);
 
-            // Slightly thinner than the trunk to avoid the "blocky" rectangular artifact
-            int connectionWidth = std::max(1, static_cast<int>(5 * zoomScale * treeGrowthScale));
-            setlinestyle(SOLID_LINE, 0, connectionWidth);
+                int bridgeTopY = anchorY - static_cast<int>((anchorY - visualGroundY) * treeGrowthScale);
+                int finalTopY = std::max(bridgeTopY, visualGroundY);
 
-            int bridgeTopY = anchorY - static_cast<int>((anchorY - surfaceY) * treeGrowthScale);
-            int finalTopY = std::max(bridgeTopY, surfaceY);
+                line(anchorX, anchorY, anchorX, finalTopY);
+                drawRoot(anchorX, anchorY, 80.0 * zoomScale, PI / 2.0, 4, treeGrowthScale, visualGroundY);
+            }
 
-            // Draw the vertical connector from seed to trunk
-            line(anchorX, anchorY, anchorX, finalTopY);
+            // --- TRUNK & CANOPY ---
+            if (animationPhase >= 2 || (animationPhase == 1 && phaseTimer > 50)) {
+                double blendFactor = (animationPhase == 1) ? (phaseTimer - 50) / 10.0 : 1.0;
+                setcolor(DARK_BROWN);
+                if (treeGrowthScale > 0.01) {
+                    drawBranch(anchorX, visualGroundY, 150 * zoomScale, PI / 2.0, 5, treeGrowthScale * blendFactor, treeGrowthScale);
+                }
+            }
 
-            // --- THE DOWNWARD ROOTS ---
-            drawRoot(anchorX, anchorY, 80.0 * zoomScale, PI / 2.0, 4, treeGrowthScale, surfaceY);
-        }
+            // --- THE VANISHING INITIAL SEED ---
+            // Logic: Shrink to 0 based on tree growth and stay gone.
+            if (animationPhase <= 2) {
+                // Multiplier 5.0 ensures the seed is gone by the time tree reaches 20% growth
+                double morphFactor = std::max(0.0, 1.0 - (treeGrowthScale * 5.0));
 
-        // 6. THE SEED
-        if (animationPhase <= 2 || animationPhase >= 4) {
-            double morphFactor = std::max(0.0, 1.0 - treeGrowthScale);
-            if (morphFactor > 0.01) {
-                double seedSize = (animationPhase == 0 ? 1.0 + phaseTimer / 20.0 : 2.0) * morphFactor * zoomScale;
-                drawSeed(anchorX, anchorY, 0, seedSize);
+                if (morphFactor > 0.01) {
+                    double currentScale = (animationPhase == 0 ? 1.0 + phaseTimer / 20.0 : 2.0) * morphFactor * zoomScale;
+                    drawSeed(anchorX, anchorY, 0, currentScale);
+                }
+            }
+
+            // --- SPROUT & LEAVES ---
+            if (animationPhase == 0 && phaseTimer > 20) {
+                setcolor(LIGHT_GREEN);
+                setlinestyle(SOLID_LINE, 0, 2);
+                double sproutProgress = (phaseTimer - 20) / 20.0;
+                int sproutLength = static_cast<int>(sproutProgress * 20 * zoomScale);
+                line(anchorX, anchorY, anchorX, anchorY - sproutLength);
+            }
+            if (animationPhase == 1) {
+                drawSeedlingLeaves(anchorX, anchorY, phaseTimer / 60.0);
             }
         }
 
-        // 7. SPROUT / LEAVES
-        if (animationPhase == 0 && phaseTimer > 20) {
-            setcolor(LIGHT_GREEN);
-            int sproutLen = static_cast<int>((phaseTimer - 20) / 20.0 * 20 * zoomScale);
-            line(anchorX, anchorY, anchorX, anchorY - sproutLen);
-        }
-        if (animationPhase == 1) {
-            drawSeedlingLeaves(anchorX, anchorY, phaseTimer / 60.0);
+        // 6. THE NEW GENERATION (FALLING SEEDS)
+        // These seeds are always drawn using their specific world coordinates
+        for (const auto& s : fallingSeeds) {
+            int sx = static_cast<int>((s.x + cameraOffsetX) * zoomScale);
+            int sy = static_cast<int>((s.y + cameraOffsetY) * zoomScale);
+
+            // New seeds drop from canopy at a fixed scale
+            drawSeed(sx, sy, s.angle, 1.2 * zoomScale);
         }
 
         displayPhaseInfo();
