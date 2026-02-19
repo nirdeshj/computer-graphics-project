@@ -127,11 +127,11 @@ class AnimatedTreeDrawer {
 
         // --- LEAF LOGIC with Color Variation ---
         if (depth <= 5 && branchProgress > 0.6) {
-            int leafSize = std::max(1, static_cast<int>(5 * scale));
+            int leafSize = std::max(2, static_cast<int>(5 * scale));
+            int numLeaves = 10;  // Increased count for even more density
 
-            // Draw a cluster of 3 leaves with different shades
-            for (int i = 0; i < 3; i++) {
-                // Variation: Leaf 0 is Light Green, Leaf 1 is Leaf Green, Leaf 2 is a custom Mid-Green
+            for (int i = 0; i < numLeaves; i++) {
+                // --- Color Selection ---
                 if (i % 3 == 0) {
                     setcolor(LIGHT_GREEN);
                     setfillstyle(SOLID_FILL, LIGHT_GREEN);
@@ -139,16 +139,31 @@ class AnimatedTreeDrawer {
                     setcolor(LEAF_GREEN);
                     setfillstyle(SOLID_FILL, LEAF_GREEN);
                 } else {
-                    int midGreen = COLOR(40, 160, 40);  // A nice forest green
-                    setcolor(midGreen);
-                    setfillstyle(SOLID_FILL, midGreen);
+                    setcolor(COLOR(34, 139, 34));  // Forest Green
+                    setfillstyle(SOLID_FILL, COLOR(34, 139, 34));
                 }
 
-                int offsetX = (i * 4) - 6;
-                int offsetY = (i % 2 == 0) ? 4 : -4;
-                fillellipse(x2 + offsetX, y2 + offsetY, leafSize, leafSize);
+                // 1. STAGGERING: Place some leaves at the tip, and some slightly back
+                // 0.9 is 90% of the way along the branch, 1.0 is the very tip.
+                double branchPos = (i % 2 == 0) ? 1.0 : 0.85;
+                int bx = x1 + (x2 - x1) * branchPos;
+                int by = y1 + (y2 - y1) * branchPos;
+
+                // 2. SCATTER: Displace them in a wider, more natural "cloud"
+                // We use sin/cos for a circular spread, but vary the radius
+                double angle = i * (6.28 / numLeaves);
+                int radius = (i % 3 == 0) ? 12 : 6;  // Some leaves stray further out
+                radius *= scale;
+
+                int offsetX = cos(angle) * radius;
+
+                // 3. VERTICAL BIAS: Specifically push some up and some down as requested
+                // Using (i * 2 - 10) creates a vertical spread from -10 to +10
+                int offsetY = (sin(angle) * radius) + (i % 4 == 0 ? -8 : 4);
+
+                fillellipse(bx + offsetX, by + offsetY, leafSize, leafSize + 1);
             }
-            setcolor(BROWN);  // Reset color for the next branch
+            setcolor(BROWN);  // Reset for next branch
         }
 
         // --- GRADUAL FLOWERING LOGIC ---
@@ -431,7 +446,7 @@ class AnimatedTreeDrawer {
                     Seed newSeed;
                     newSeed.x = seedX + 150;
                     // CHANGE: Decreased from -200 to -300 to make it spawn much higher
-                    newSeed.y = seedY - 390;
+                    newSeed.y = seedY - 360;
 
                     newSeed.angle = 60;
                     newSeed.velocityY = 0;
