@@ -321,7 +321,7 @@ class AnimatedTreeDrawer {
     // Display phase information
     void displayPhaseInfo() {
         setcolor(COLOR(20, 20, 60));  // High-contrast navy
-        settextstyle(TRIPLEX_FONT, HORIZ_DIR, 2);
+        settextstyle(SIMPLEX_FONT, HORIZ_DIR, 1);
 
         char title[100];
         switch (animationPhase) {
@@ -348,7 +348,7 @@ class AnimatedTreeDrawer {
     }
 
     void drawPauseMenu() {
-        int boxW = 460, boxH = 180;
+        int boxW = 345, boxH = 135;
         int midX = screenWidth / 2;
         int midY = screenHeight / 2;
         int borderColor = COLOR(80, 50, 30);
@@ -366,14 +366,14 @@ class AnimatedTreeDrawer {
         setcolor(BLACK);
 
         // Header (Fixed aspect ratio)
-        settextstyle(TRIPLEX_FONT, HORIZ_DIR, 3);
-        outtextxy(midX - 75, midY - 65, (char*)"PAUSED");
+        settextstyle(SIMPLEX_FONT, HORIZ_DIR, 2);
+        outtextxy(midX - 55, midY - 55, (char*)"PAUSED");
 
         // Instructions
-        settextstyle(TRIPLEX_FONT, HORIZ_DIR, 2);
-        outtextxy(midX - 160, midY + 10, (char*)"[Space] - Play / Pause");
-        outtextxy(midX - 160, midY + 35, (char*)"[R]     - Reset Animation");
-        outtextxy(midX - 160, midY + 60, (char*)"[Q]     - Quit Application");
+        settextstyle(SIMPLEX_FONT, HORIZ_DIR, 1);
+        outtextxy(midX - 160, midY - 10, (char*)"[Space] - Play / Pause");
+        outtextxy(midX - 160, midY + 15, (char*)"[R]        - Reset Animation");
+        outtextxy(midX - 160, midY + 40, (char*)"[Q]        - Quit Application");
     }
 
     void drawSeedlingLeaves(int x, int y, double progress) {
