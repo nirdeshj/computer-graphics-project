@@ -20,6 +20,7 @@ struct Seed {
 
 class AnimatedTreeDrawer {
    private:
+    bool isPaused;
     int screenWidth, screenHeight;
     int groundLevel;
     int seedX, seedY;
@@ -358,23 +359,26 @@ class AnimatedTreeDrawer {
     }
 
     void drawSeedlingLeaves(int x, int y, double progress) {
-        int stemHeight = static_cast<int>(60 * progress);
+        if (progress <= 0) return;
 
-        setcolor(LEAF_GREEN);
-        setlinestyle(SOLID_LINE, 0, std::max(2, static_cast<int>(progress * 4)));
-        line(x, y, x, y - stemHeight);
+        // Draw two "seed-leaves" (cotyledons) at the TIP of the stem
+        int leafColor = LIGHT_GREEN;
+        setcolor(leafColor);
+        setfillstyle(SOLID_FILL, leafColor);
 
-        if (progress > 0.2) {
-            double leafProgress = (progress - 0.2) / 0.8;
-            int leafSize = static_cast<int>(20 * leafProgress);
-            int leafYOffset = static_cast<int>(stemHeight * 0.5);
+        int leafSize = static_cast<int>(6 * zoomScale);
 
-            setcolor(LIGHT_GREEN);
-            setfillstyle(SOLID_FILL, LIGHT_GREEN);
-            // Left and Right leaves
-            fillellipse(x - leafSize, y - leafYOffset, leafSize, static_cast<int>(leafSize * 0.6));
-            fillellipse(x + leafSize, y - leafYOffset, leafSize, static_cast<int>(leafSize * 0.6));
-        }
+        // Left Leaf (Angled up-left)
+        double leftAngle = PI * 0.75;  // 135 degrees
+        int lx = x + static_cast<int>(leafSize * cos(leftAngle));
+        int ly = y - static_cast<int>(leafSize * sin(leftAngle));
+        fillellipse(lx, ly, leafSize, leafSize / 2);
+
+        // Right Leaf (Angled up-right)
+        double rightAngle = PI * 0.25;  // 45 degrees
+        int rx = x + static_cast<int>(leafSize * cos(rightAngle));
+        int ry = y - static_cast<int>(leafSize * sin(rightAngle));
+        fillellipse(rx, ry, leafSize, leafSize / 2);
     }
 
     void drawRoot(int x1, int y1, double length, double angle, int depth, double growthProgress, int surfaceLimitY) {
@@ -423,7 +427,8 @@ class AnimatedTreeDrawer {
 
    public:
     AnimatedTreeDrawer()
-        : screenWidth(800),
+        : isPaused(false),
+          screenWidth(800),
           screenHeight(600),
           groundLevel(480),
           seedX(400),
@@ -614,97 +619,81 @@ class AnimatedTreeDrawer {
     void render() {
         setactivepage(1 - getactivepage());
 
-        // 1. ENVIRONMENT (Sky, Sun, Clouds)
+        // 1. SKY & COORDINATES
         int r = 100 - static_cast<int>(50 * -sin(sunAngle));
         int g = 170 - static_cast<int>(100 * -sin(sunAngle));
         int b = 200 - static_cast<int>(80 * -sin(sunAngle));
-        r = std::max(0, std::min(255, r));
-        g = std::max(0, std::min(255, g));
-        b = std::max(0, std::min(255, b));
-        setbkcolor(COLOR(r, g, b));
+        setbkcolor(COLOR(std::max(0, std::min(255, r)), std::max(0, std::min(255, g)), std::max(0, std::min(255, b))));
         cleardevice();
-
         drawSun();
         drawClouds();
 
-        // 2. COORDINATE TRANSFORMATIONS
         int visualGroundY = static_cast<int>((groundLevel + cameraOffsetY) * zoomScale);
         int anchorX = static_cast<int>((seedX + cameraOffsetX) * zoomScale);
         int anchorY = static_cast<int>((seedY + cameraOffsetY) * zoomScale);
 
-        // 3. SOIL (The furthest background layer)
-        int tempGround = groundLevel;
+        // 2. SOIL
+        int tempG = groundLevel;
         groundLevel = visualGroundY;
         drawSoil();
-        groundLevel = tempGround;
+        groundLevel = tempG;
 
-        // 4. CHECK FOR NEW GENERATION
         bool newSeedHasLanded = false;
-        if (!fallingSeeds.empty()) {
-            for (const auto& s : fallingSeeds) {
-                if (!s.active && s.y >= groundLevel - 1) {
-                    newSeedHasLanded = true;
-                    break;
-                }
-            }
+        for (const auto& s : fallingSeeds) {
+            if (!s.active && s.y >= groundLevel - 1) newSeedHasLanded = true;
         }
 
-        // --- 5. FALLING SEEDS (Drawn BEHIND the tree) ---
-        // Moving this here ensures branches/leaves are drawn over the falling seeds.
+        // 3. FALLING SEEDS
         for (const auto& s : fallingSeeds) {
             int sx = static_cast<int>((s.x + cameraOffsetX) * zoomScale);
             int sy = static_cast<int>((s.y + cameraOffsetY) * zoomScale);
-
-            // We draw them even if active or landed to ensure seamless transition
             drawSeed(sx, sy, s.angle, 1.2 * zoomScale);
         }
 
-        // 6. THE PARENT TREE & ROOT SYSTEM (Drawn IN FRONT of falling seeds)
+        // 4. THE PARENT SYSTEM
         if (!newSeedHasLanded) {
-            // --- ROOTS & CONNECTOR ---
-            if (animationPhase >= 1 && animationPhase <= 4) {
-                setcolor(COLOR(140, 100, 60));
-                int connectionWidth = std::max(1, static_cast<int>(5 * zoomScale * treeGrowthScale));
-                setlinestyle(SOLID_LINE, 0, connectionWidth);
-
-                int bridgeTopY = anchorY - static_cast<int>((anchorY - visualGroundY) * treeGrowthScale);
-                int finalTopY = std::max(bridgeTopY, visualGroundY);
-
-                line(anchorX, anchorY, anchorX, finalTopY);
-                drawRoot(anchorX, anchorY, 80.0 * zoomScale, PI / 2.0, 4, treeGrowthScale, visualGroundY);
+            // --- ROOTS ---
+            if (animationPhase >= 1) {
+                drawRoot(anchorX, anchorY, 80.0 * zoomScale, PI / 2.0, 4, (animationPhase > 1 ? 1.0 : phaseTimer / 60.0), visualGroundY);
             }
 
-            // --- TRUNK & CANOPY ---
-            // This is the main visual body that will now occlude the seeds
-            if (animationPhase >= 2 || (animationPhase == 1 && phaseTimer > 50)) {
-                double blendFactor = (animationPhase == 1) ? (phaseTimer - 50) / 10.0 : 1.0;
-                setcolor(DARK_BROWN);
-                if (treeGrowthScale > 0.01) {
-                    drawBranch(anchorX, visualGroundY, 150 * zoomScale, PI / 2.0, 5, treeGrowthScale * blendFactor, treeGrowthScale);
-                }
-            }
+            // --- THE UNIFIED STEM/TRUNK ---
+            if (animationPhase == 0 || animationPhase == 1) {
+                // SPROUTING: Seedling grows from seed to surface
+                double progress = (animationPhase == 0) ? (std::max(0, phaseTimer - 20) / 20.0) : 1.0;
+                int stemTopY = anchorY - static_cast<int>(progress * (anchorY - visualGroundY));
 
-            // --- THE VANISHING INITIAL SEED ---
-            if (animationPhase <= 2) {
-                double morphFactor = std::max(0.0, 1.0 - (treeGrowthScale * 5.0));
-
-                if (morphFactor > 0.01) {
-                    double currentScale = (animationPhase == 0 ? 1.0 + phaseTimer / 20.0 : 2.0) * morphFactor * zoomScale;
-                    drawSeed(anchorX, anchorY, 0, currentScale);
-                }
-            }
-
-            // --- SPROUT & LEAVES ---
-            if (animationPhase == 0 && phaseTimer > 20) {
                 setcolor(LIGHT_GREEN);
                 setlinestyle(SOLID_LINE, 0, 2);
-                double sproutProgress = (phaseTimer - 20) / 20.0;
-                int sproutLength = static_cast<int>(sproutProgress * 20 * zoomScale);
-                line(anchorX, anchorY, anchorX, anchorY - sproutLength);
+                line(anchorX, anchorY, anchorX, stemTopY);
+
+                // Draw leaves at the TIP of the growing stem
+                if (progress > 0.1) drawSeedlingLeaves(anchorX, stemTopY, progress);
             }
-            if (animationPhase == 1) {
-                drawSeedlingLeaves(anchorX, anchorY, phaseTimer / 60.0);
+
+            if (animationPhase >= 2) {
+                // MATURE TRUNK: Root connector stays, tree grows on top
+                setcolor(COLOR(140, 100, 60));  // Stem-turned-root
+                line(anchorX, anchorY, anchorX, visualGroundY);
+
+                if (treeGrowthScale > 0.01) {
+                    drawBranch(anchorX, visualGroundY, 150 * zoomScale, PI / 2.0, 5, treeGrowthScale);
+                }
             }
+
+            // --- THE STABLE SEED (Vanish only) ---
+            if (animationPhase <= 2) {
+                // FIXED: Removed size-increase math. MorphFactor only shrinks it as tree grows.
+                double morphFactor = std::max(0.0, 1.0 - (treeGrowthScale * 5.0));
+                if (morphFactor > 0.01) {
+                    drawSeed(anchorX, anchorY, 0, 1.0 * zoomScale * morphFactor);
+                }
+            }
+        }
+
+        if (isPaused) {
+            setcolor(WHITE);
+            outtextxy(screenWidth / 2 - 40, 50, (char*)"PAUSED");
         }
 
         displayPhaseInfo();
@@ -713,26 +702,26 @@ class AnimatedTreeDrawer {
 
     void run() {
         initialize();
+        isPaused = false;  // Ensure it starts unpaused
 
         while (true) {
-            // Check for keyboard input
             if (kbhit()) {
                 char key = getch();
-                if (key == 27) break;              // ESC to exit
-                if (key == ' ') resetAnimation();  // SPACE to restart
+                if (key == 'q') break;                 // 'q' to exit
+                if (key == '0') resetAnimation();      // '0' to restart
+                if (key == ' ') isPaused = !isPaused;  // SPACE to pause
             }
 
-            // Update animation state
-            update();
+            // Only update logic if NOT paused
+            if (!isPaused) {
+                update();
+            }
 
-            // Render frame
+            // Always render, otherwise the screen freezes/flickers on pause
             render();
 
-            // Control frame rate (~30 FPS)
-            // Sleep(33);  // Windows Sleep uses milliseconds
             delay(33);
         }
-
         closegraph();
     }
 };
