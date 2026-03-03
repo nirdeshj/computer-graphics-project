@@ -627,7 +627,7 @@ class AnimatedTreeDrawer {
         double elapsedSeconds = std::chrono::duration<double>(currentTime - lastTime).count();
         lastTime = currentTime;
 
-        sunAngle += 0.5 * elapsedSeconds;  // radians per second
+        sunAngle += 0.25 * elapsedSeconds;  // radians per second
         if (sunAngle > 2 * PI) sunAngle -= 2 * PI;
     }
 
