@@ -6,13 +6,11 @@
 #include <thread>
 #include <vector>
 
-struct Point
-{
+struct Point {
     int x, y;
 };
 
-struct Seed
-{
+struct Seed {
     double x, y;
     double angle;
     double velocityY;
@@ -20,16 +18,14 @@ struct Seed
     bool active;
 };
 
-class AnimatedTreeDrawer
-{
-private:
+class AnimatedTreeDrawer {
+   private:
     bool isPaused;
     int screenWidth, screenHeight;
     int groundLevel;
     int seedX, seedY;
     std::chrono::steady_clock::time_point lastTime;
-    double sunAngle;       // current sun angle
-    double sunAngleTarget; // target sun angle for smooth interpolation
+    double sunAngle;
 
     // Animation state variables
     double treeGrowthScale;
@@ -38,7 +34,7 @@ private:
     int flowerPosX, flowerPosY;
     std::vector<Point> flowerPositions;
     std::vector<Seed> fallingSeeds;
-    int animationPhase; // 0: seed germination, 1: tree growth, 2: flowering, 3: seed fall, 4: reset
+    int animationPhase;  // 0: seed germination, 1: tree growth, 2: flowering, 3: seed fall, 4: reset
     int phaseTimer;
     int rightmostBranchX, rightmostBranchY;
     double zoomScale;
@@ -46,10 +42,6 @@ private:
 
     // Colors
     const double PI = 3.141592654;
-    double easeInOut(double t)
-    {
-        return t * t * (3 - 2 * t); // smooth morph transition
-    }
     const int BROWN = COLOR(139, 69, 19);
     const int DARK_BROWN = COLOR(101, 67, 33);
     const int LEAF_GREEN = COLOR(34, 139, 34);
@@ -57,8 +49,7 @@ private:
     const int SKY_BLUE = COLOR(135, 206, 235);
     const int SOIL_BROWN = COLOR(90, 50, 20);
 
-    void drawSeed(int x, int y, double angle, double scale = 1.0)
-    {
+    void drawSeed(int x, int y, double angle, double scale = 1.0) {
         int oldColor = getcolor();
 
         setcolor(COLOR(160, 82, 45));
@@ -71,8 +62,7 @@ private:
         const int numPoints = 12;
         int points[numPoints * 2];
 
-        for (int i = 0; i < numPoints; i++)
-        {
+        for (int i = 0; i < numPoints; i++) {
             double t = i * 2 * PI / numPoints;
             // Oval shape (wider than tall)
             double localX = size * cos(t);
@@ -103,93 +93,51 @@ private:
         setcolor(oldColor);
     }
 
-    void drawSoil()
-    {
+    void drawSoil() {
         // Lighter, unified brown for the entire underground section
         int soilColor = COLOR(110, 70, 40);
         setfillstyle(SOLID_FILL, soilColor);
         setcolor(soilColor);
         bar(0, groundLevel, screenWidth, screenHeight);
     }
-    void drawSmoothBranch(int x1, int y1, int x2, int y2, int thickness)
-    {
-        int segments = 10;
 
-        double dx = (x2 - x1) / (double)segments;
-        double dy = (y2 - y1) / (double)segments;
-
-        int prevX = x1;
-        int prevY = y1;
-
-        for (int i = 1; i <= segments; i++)
-        {
-            int newX = x1 + dx * i;
-            int newY = y1 + dy * i;
-
-            setlinestyle(SOLID_LINE, 0, thickness);
-            line(prevX, prevY, newX, newY);
-
-            prevX = newX;
-            prevY = newY;
-        }
-    }
-
-    void drawBranch(int x1, int y1, double length, double angle, int depth, double scale, double growthProgress = 1.0)
-    {
+    void drawBranch(int x1, int y1, double length, double angle, int depth, double scale, double growthProgress = 1.0) {
         double currentVisualLength = length * scale;
-        if (currentVisualLength < 2.0 || depth <= 0)
-            return;
+        if (currentVisualLength < 2.0 || depth <= 0) return;
 
         // Use Dark Brown for the thick trunk, and lighter brown for branches
-        if (depth >= 5)
-        {
+        if (depth >= 5) {
             setcolor(DARK_BROWN);
-        }
-        else
-        {
+        } else {
             setcolor(BROWN);
         }
 
-        double branchProgress = (growthProgress * 10) - (8 - depth);
-        branchProgress = std::max(0.0, std::min(1.0, branchProgress));
-        branchProgress = branchProgress * branchProgress * (3 - 2 * branchProgress); // smoothstepmi
-        if (branchProgress <= 0)
-            return;
+        double branchProgress = std::min(1.0, std::max(0.0, (growthProgress * 10) - (8 - depth)));
+        if (branchProgress <= 0) return;
 
         double scaledLength = currentVisualLength * branchProgress;
-
-        double fx2 = x1 + scaledLength * cos(angle);
-        double fy2 = y1 - scaledLength * sin(angle);
-
-        int x2 = static_cast<int>(fx2);
-        int y2 = static_cast<int>(fy2);
+        int x2 = x1 + static_cast<int>(scaledLength * cos(angle));
+        int y2 = y1 - static_cast<int>(scaledLength * sin(angle));
 
         // Draw the Branch Line
         setlinestyle(SOLID_LINE, 0, std::max(1, static_cast<int>(depth * scale)));
-        drawSmoothBranch(x1, y1, x2, y2, std::max(1, static_cast<int>(depth * scale)));
+        line(x1, y1, x2, y2);
 
         // --- LEAF LOGIC with Color Variation ---
-        if (depth <= 5 && branchProgress > 0.6)
-        {
+        if (depth <= 5 && branchProgress > 0.6) {
             int leafSize = std::max(2, static_cast<int>(5 * scale));
-            int numLeaves = 10; // Increased count for even more density
+            int numLeaves = 10;  // Increased count for even more density
 
-            for (int i = 0; i < numLeaves; i++)
-            {
+            for (int i = 0; i < numLeaves; i++) {
                 // --- Color Selection ---
-                if (i % 3 == 0)
-                {
+                if (i % 3 == 0) {
                     setcolor(LIGHT_GREEN);
                     setfillstyle(SOLID_FILL, LIGHT_GREEN);
-                }
-                else if (i % 3 == 1)
-                {
+                } else if (i % 3 == 1) {
                     setcolor(LEAF_GREEN);
                     setfillstyle(SOLID_FILL, LEAF_GREEN);
-                }
-                else
-                {
-                    setcolor(COLOR(34, 139, 34)); // Forest Green
+                } else {
+                    setcolor(COLOR(34, 139, 34));  // Forest Green
                     setfillstyle(SOLID_FILL, COLOR(34, 139, 34));
                 }
 
@@ -202,7 +150,7 @@ private:
                 // 2. SCATTER: Displace them in a wider, more natural "cloud"
                 // We use sin/cos for a circular spread, but vary the radius
                 double angle = i * (6.28 / numLeaves);
-                int radius = (i % 3 == 0) ? 12 : 6; // Some leaves stray further out
+                int radius = (i % 3 == 0) ? 12 : 6;  // Some leaves stray further out
                 radius *= scale;
 
                 int offsetX = cos(angle) * radius;
@@ -213,31 +161,27 @@ private:
 
                 fillellipse(bx + offsetX, by + offsetY, leafSize, leafSize + 1);
             }
-            setcolor(BROWN); // Reset for next branch
+            setcolor(BROWN);  // Reset for next branch
         }
 
         // --- GRADUAL FLOWERING LOGIC ---
-        if (showFlowers && branchProgress > 0.9)
-        {
+        if (showFlowers && branchProgress > 0.9) {
             // Tier 1: Deepest flowers start first
-            if (depth == 3 && flowerScale > 0.3)
-            {
+            if (depth == 3 && flowerScale > 0.3) {
                 // These flowers appear when the scale is at 30%
                 double localScale = (flowerScale - 0.3) / 0.7;
                 drawFlower(x2, y2, localScale);
             }
 
             // Tier 2: Middle flowers
-            if (depth == 2 && flowerScale > 0.6)
-            {
+            if (depth == 2 && flowerScale > 0.6) {
                 // These flowers appear when the scale is at 60%
                 double localScale = (flowerScale - 0.6) / 0.4;
                 drawFlower(x2, y2, localScale);
             }
 
             // Tier 3: Tip flowers
-            if (depth == 1 && flowerScale > 0.8)
-            {
+            if (depth == 1 && flowerScale > 0.8) {
                 // These flowers appear last, at 80% scale
                 double localScale = (flowerScale - 0.8) / 0.2;
                 drawFlower(x2, y2, localScale);
@@ -245,15 +189,13 @@ private:
         }
 
         double newLength = length * 0.7;
-        drawBranch(x2, y2, newLength, angle - 0.35, depth - 1, scale, growthProgress);
-        drawBranch(x2, y2, newLength, angle + 0.35, depth - 1, scale, growthProgress);
-        drawBranch(x2, y2, newLength * 0.75, angle + 0.1, depth - 1, scale, growthProgress);
+        drawBranch(x2, y2, newLength, angle - 0.45, depth - 1, scale, growthProgress);
+        drawBranch(x2, y2, newLength, angle + 0.45, depth - 1, scale, growthProgress);
+        drawBranch(x2, y2, newLength * 0.8, angle, depth - 1, scale, growthProgress);
     }
 
-    void drawFlower(int x, int y, double scale)
-    {
-        if (scale <= 0)
-            return;
+    void drawFlower(int x, int y, double scale) {
+        if (scale <= 0) return;
 
         int oldColor = getcolor();
 
@@ -262,10 +204,10 @@ private:
 
         // --- COLORS (Canopy / Poppy Style) ---
         // Canopy blossoms are usually creamy white or pale blush
-        int shadowPetalColor = COLOR(240, 220, 210); // Slightly darker for depth
-        int frontPetalColor = COLOR(255, 245, 238);  // Creamy Seashell White
-        int centerDark = COLOR(139, 0, 0);           // Deep maroon "poppy" center
-        int centerLight = YELLOW;                    // Bright pollen dot
+        int shadowPetalColor = COLOR(240, 220, 210);  // Slightly darker for depth
+        int frontPetalColor = COLOR(255, 245, 238);   // Creamy Seashell White
+        int centerDark = COLOR(139, 0, 0);            // Deep maroon "poppy" center
+        int centerLight = YELLOW;                     // Bright pollen dot
 
         // --- DRAWING THE POPPY SHAPE ---
         // A poppy has 4 broad, overlapping petals forming a cup/cross shape.
@@ -273,14 +215,14 @@ private:
         // 1. Back Petals (Vertical-ish) - Drawn slightly darker for a 3D shadow effect
         setcolor(shadowPetalColor);
         setfillstyle(SOLID_FILL, shadowPetalColor);
-        fillellipse(x, y - baseSize, baseSize + 1, baseSize + 2); // Top petal
-        fillellipse(x, y + baseSize, baseSize + 1, baseSize + 2); // Bottom petal
+        fillellipse(x, y - baseSize, baseSize + 1, baseSize + 2);  // Top petal
+        fillellipse(x, y + baseSize, baseSize + 1, baseSize + 2);  // Bottom petal
 
         // 2. Front Petals (Horizontal-ish) - Lighter color, drawn on top
         setcolor(frontPetalColor);
         setfillstyle(SOLID_FILL, frontPetalColor);
-        fillellipse(x - baseSize, y, baseSize + 2, baseSize + 1); // Left petal
-        fillellipse(x + baseSize, y, baseSize + 2, baseSize + 1); // Right petal
+        fillellipse(x - baseSize, y, baseSize + 2, baseSize + 1);  // Left petal
+        fillellipse(x + baseSize, y, baseSize + 2, baseSize + 1);  // Right petal
 
         // 3. The Dark Poppy Center
         // Poppies are famous for their high-contrast, dark middle
@@ -300,8 +242,7 @@ private:
     }
 
     // Draw the sun
-    void drawSun()
-    {
+    void drawSun() {
         int radius = 30;
         int skyHeight = 150;
         int sunX = static_cast<int>(screenWidth * sunAngle / PI);
@@ -311,8 +252,7 @@ private:
         setfillstyle(SOLID_FILL, YELLOW);
         fillellipse(sunX, sunY, radius, radius);
 
-        for (int i = 0; i < 12; i++)
-        {
+        for (int i = 0; i < 12; i++) {
             double angle = i * 30 * PI / 180.0;
             int x1 = sunX + static_cast<int>((radius + 5) * cos(angle));
             int y1 = sunY + static_cast<int>((radius + 5) * sin(angle));
@@ -323,18 +263,15 @@ private:
     }
 
     // Draw clouds
-    void drawClouds()
-    {
+    void drawClouds() {
         setcolor(WHITE);
         setfillstyle(SOLID_FILL, WHITE);
 
-        for (int cloud = 0; cloud < 3; cloud++)
-        {
+        for (int cloud = 0; cloud < 3; cloud++) {
             int cloudX = 100 + cloud * 200;
             int cloudY = 80 + (cloud * 17) % 50;
 
-            for (int i = 0; i < 5; i++)
-            {
+            for (int i = 0; i < 5; i++) {
                 int circleX = cloudX + i * 25;
                 int circleY = cloudY + ((i * 13) % 20 - 10);
                 int radius = 20 + (i * 7) % 10;
@@ -343,15 +280,11 @@ private:
         }
     }
 
-    void updateFallingSeeds()
-    {
-        for (auto &seed : fallingSeeds)
-        {
-            if (!seed.active)
-                continue;
+    void updateFallingSeeds() {
+        for (auto& seed : fallingSeeds) {
+            if (!seed.active) continue;
 
-            if (seed.y < groundLevel)
-            {
+            if (seed.y < groundLevel) {
                 // AIR PHASE
                 seed.velocityY += 0.02;
                 seed.y += seed.velocityY;
@@ -366,9 +299,7 @@ private:
                 // We force the angle to "align" as it gets closer.
                 // This formula spins fast when high, and aligns perfectly as it hits 0.
                 seed.angle = (distanceToGround / 35.0) + (PI * 4);
-            }
-            else
-            {
+            } else {
                 // GROUND PHASE - HARD LOCK
                 // The moment we touch ground, we force Angle to 0.
                 // Since our formula above aligns to near-zero at distance 0, this is seamless.
@@ -377,12 +308,9 @@ private:
                 seed.velocityX = 0;
 
                 // Sinking Logic
-                if (seed.y < groundLevel + 25)
-                {
-                    seed.y += 0.5; // Sink
-                }
-                else
-                {
+                if (seed.y < groundLevel + 25) {
+                    seed.y += 0.5;  // Sink
+                } else {
                     // STOP SHAKING: Hard set the final position
                     seed.y = groundLevel + 25;
                 }
@@ -391,38 +319,35 @@ private:
     }
 
     // Display phase information
-    void displayPhaseInfo()
-    {
-        setcolor(COLOR(20, 20, 60)); // High-contrast navy
+    void displayPhaseInfo() {
+        setcolor(COLOR(20, 20, 60));  // High-contrast navy
         settextstyle(SIMPLEX_FONT, HORIZ_DIR, 1);
 
         char title[100];
-        switch (animationPhase)
-        {
-        case 0:
-            sprintf(title, "Phase 1: Seed Germination");
-            break;
-        case 1:
-            sprintf(title, "Phase 2: Seedling Growth");
-            break;
-        case 2:
-            sprintf(title, "Phase 3: Tree Maturation");
-            break;
-        case 3:
-            sprintf(title, "Phase 4: Flowering");
-            break;
-        case 4:
-            sprintf(title, "Phase 5: Seed Dispersal");
-            break;
-        case 5:
-            sprintf(title, "Phase 6: Cycle Reset");
-            break;
+        switch (animationPhase) {
+            case 0:
+                sprintf(title, "Phase 1: Seed Germination");
+                break;
+            case 1:
+                sprintf(title, "Phase 2: Seedling Growth");
+                break;
+            case 2:
+                sprintf(title, "Phase 3: Tree Maturation");
+                break;
+            case 3:
+                sprintf(title, "Phase 4: Flowering");
+                break;
+            case 4:
+                sprintf(title, "Phase 5: Seed Dispersal");
+                break;
+            case 5:
+                sprintf(title, "Phase 6: Cycle Reset");
+                break;
         }
         outtextxy(20, 20, title);
     }
 
-    void drawPauseMenu()
-    {
+    void drawPauseMenu() {
         int boxW = 345, boxH = 135;
         int midX = screenWidth / 2;
         int midY = screenHeight / 2;
@@ -437,30 +362,28 @@ private:
         floodfill(midX, midY, borderColor);
 
         // 2. Text Setup
-        setbkcolor(WHITE); // Removes text background artifacts
+        setbkcolor(WHITE);  // Removes text background artifacts
         setcolor(BLACK);
 
         // Header (Fixed aspect ratio)
         settextstyle(SIMPLEX_FONT, HORIZ_DIR, 2);
-        outtextxy(midX - 55, midY - 55, (char *)"PAUSED");
+        outtextxy(midX - 55, midY - 55, (char*)"PAUSED");
 
         // Instructions
         settextstyle(SIMPLEX_FONT, HORIZ_DIR, 1);
-        outtextxy(midX - 160, midY - 10, (char *)"[Space] - Play / Pause");
-        outtextxy(midX - 160, midY + 15, (char *)"[R]        - Reset Animation");
-        outtextxy(midX - 160, midY + 40, (char *)"[Q]        - Quit Application");
+        outtextxy(midX - 160, midY - 10, (char*)"[Space] - Play / Pause");
+        outtextxy(midX - 160, midY + 15, (char*)"[R]        - Reset Animation");
+        outtextxy(midX - 160, midY + 40, (char*)"[Q]        - Quit Application");
     }
 
-    void drawSeedlingLeaves(int x, int y, double progress)
-    {
+    void drawSeedlingLeaves(int x, int y, double progress) {
         int stemHeight = static_cast<int>(60 * progress);
 
         setcolor(LEAF_GREEN);
         setlinestyle(SOLID_LINE, 0, std::max(2, static_cast<int>(progress * 4)));
         line(x, y, x, y - stemHeight);
 
-        if (progress > 0.2)
-        {
+        if (progress > 0.2) {
             double leafProgress = (progress - 0.2) / 0.8;
             int leafSize = static_cast<int>(20 * leafProgress);
             int leafYOffset = static_cast<int>(stemHeight * 0.5);
@@ -473,10 +396,8 @@ private:
         }
     }
 
-    void drawRoot(int x1, int y1, double length, double angle, int depth, double growthProgress, int surfaceLimitY)
-    {
-        if (depth <= 0 || growthProgress <= 0)
-            return;
+    void drawRoot(int x1, int y1, double length, double angle, int depth, double growthProgress, int surfaceLimitY) {
+        if (depth <= 0 || growthProgress <= 0) return;
 
         // Earthy brown colors
         int rootColor = (depth > 3) ? COLOR(140, 100, 60) : COLOR(190, 150, 100);
@@ -495,13 +416,11 @@ private:
         int drawY1 = std::max(y1, surfaceLimitY);
         int drawY2 = std::max(y2, surfaceLimitY);
 
-        if (drawY1 >= surfaceLimitY)
-        {
+        if (drawY1 >= surfaceLimitY) {
             line(x1, drawY1, x2, drawY2);
         }
 
-        if (depth > 1)
-        {
+        if (depth > 1) {
             // 1. Standard Downward Roots (The deep system)
             drawRoot(x2, y2, length * 0.65, angle + 0.3, depth - 1, growthProgress, surfaceLimitY);
             drawRoot(x2, y2, length * 0.65, angle - 0.3, depth - 1, growthProgress, surfaceLimitY);
@@ -511,8 +430,7 @@ private:
             drawRoot(x2, y2, length * 0.8, angle - 1.3, depth - 1, growthProgress, surfaceLimitY);
 
             // --- THE TWO NEW SURFACE BRANCHES (Angled slightly below) ---
-            if (depth == 4)
-            {
+            if (depth == 4) {
                 // Right-side surface root: 0.2 is slightly "down" from horizontal
                 drawRoot(x1, y1, length * 1.2, 0.2, depth - 2, growthProgress, surfaceLimitY);
 
@@ -522,7 +440,7 @@ private:
         }
     }
 
-public:
+   public:
     AnimatedTreeDrawer()
         : isPaused(true),
           screenWidth(800),
@@ -531,7 +449,6 @@ public:
           seedX(400),
           seedY(groundLevel + 25),
           sunAngle(0.0),
-          sunAngleTarget(0.0),
           treeGrowthScale(0.0),
           flowerScale(0.0),
           showFlowers(false),
@@ -543,8 +460,7 @@ public:
           cameraOffsetX(0),
           cameraOffsetY(0) {}
 
-    void initialize()
-    {
+    void initialize() {
         lastTime = std::chrono::steady_clock::now();
         initwindow(screenWidth, screenHeight, "Animated Tree Life Cycle");
         setbkcolor(SKY_BLUE);
@@ -553,8 +469,7 @@ public:
         setvisualpage(0);
     }
 
-    void resetAnimation()
-    {
+    void resetAnimation() {
         treeGrowthScale = 0.0;
         flowerScale = 0.0;
         showFlowers = false;
@@ -572,188 +487,151 @@ public:
         fallingSeeds.clear();
     }
 
-    void update()
-    {
+    void update() {
         phaseTimer += 1;
 
-        switch (animationPhase)
-        {
-        case 0: // Seed germination (0-40 frames)
-            if (phaseTimer < 40)
-            {
-                treeGrowthScale = 0.0;
+        switch (animationPhase) {
+            case 0:  // Seed germination (0-40 frames)
+                if (phaseTimer < 40) {
+                    treeGrowthScale = 0.0;
+                } else {
+                    animationPhase = 1;
+                    phaseTimer = 0;
+                }
+                break;
+
+            case 1: {  // Leaf phase
+                if (phaseTimer < 60) {
+                    treeGrowthScale = std::min(0.15, phaseTimer / 400.0);
+                } else {
+                    animationPhase = 2;
+                    phaseTimer = 0;
+                }
+                break;
             }
-            else
-            {
-                animationPhase = 1;
-                phaseTimer = 0;
+
+            case 2: {  // Tree growth
+                if (phaseTimer < 100) {
+                    treeGrowthScale = 0.15 + (phaseTimer / 100.0) * 0.85;
+                } else {
+                    treeGrowthScale = 1.0;  // HARD CAP: Prevents infinite growth
+                    animationPhase = 3;
+                    phaseTimer = 0;
+                    showFlowers = true;
+                }
+                break;
             }
-            break;
 
-        case 1:
-        { // Leaf phase
-            if (phaseTimer < 60)
-            {
-                treeGrowthScale = std::min(0.15, phaseTimer / 400.0);
+            case 3: {  // Flowering
+                if (phaseTimer < 100) {
+                    flowerScale = phaseTimer / 100.0;
+                } else {
+                    animationPhase = 4;
+                    phaseTimer = 0;
+
+                    Seed newSeed;
+                    newSeed.x = seedX + 150;
+                    // CHANGE: Decreased from -200 to -300 to make it spawn much higher
+                    newSeed.y = seedY - 360;
+
+                    newSeed.angle = 60;
+                    newSeed.velocityY = 0;
+                    newSeed.velocityX = 0.8;
+                    newSeed.active = true;
+                    fallingSeeds.clear();
+                    fallingSeeds.push_back(newSeed);
+                }
+                break;
             }
-            else
-            {
-                animationPhase = 2;
-                phaseTimer = 0;
-            }
-            break;
-        }
 
-        case 2:
-        { // Tree growth
-            if (phaseTimer < 100)
-            {
-                double progress = phaseTimer / 100.0;
-                progress = easeInOut(progress);
-                treeGrowthScale = 0.15 + progress * 0.85;
-            }
-            else
-            {
-                treeGrowthScale = 1.0; // HARD CAP: Prevents infinite growth
-                animationPhase = 3;
-                phaseTimer = 0;
-                showFlowers = true;
-            }
-            break;
-        }
+            case 4: {  // Falling phase
+                updateFallingSeeds();
 
-        case 3:
-        { // Flowering
-            if (phaseTimer < 100)
-            {
-                double progress = phaseTimer / 100.0;
-                flowerScale = easeInOut(progress);
-            }
-            else
-            {
-                animationPhase = 4;
-                phaseTimer = 0;
+                if (!fallingSeeds.empty()) {
+                    Seed& s = fallingSeeds[0];
 
-                Seed newSeed;
-                newSeed.x = seedX + 150;
-                // CHANGE: Decreased from -200 to -300 to make it spawn much higher
-                newSeed.y = seedY - 360;
+                    // 1. Keep your original cinematic zoom speed
+                    if (zoomScale < 8.0) zoomScale += 0.05;
 
-                newSeed.angle = 60;
-                newSeed.velocityY = 0;
-                newSeed.velocityX = 0.8;
-                newSeed.active = true;
-                fallingSeeds.clear();
-                fallingSeeds.push_back(newSeed);
-            }
-            break;
-        }
+                    // 2. Define the starting focus (Center of Tree) and target focus (Seed)
+                    double startFocusX = screenWidth / 2.0;
+                    double startFocusY = screenHeight / 2.0;
+                    double targetFocusX = s.x;
+                    double targetFocusY = s.y;
 
-        case 4:
-        { // Falling phase
-            updateFallingSeeds();
+                    // 3. Calculate camera panning progress (0.0 to 1.0)
+                    // Using phaseTimer / 80.0 means the pan finishes smoothly around frame 80,
+                    // ensuring the camera locks onto the seed while it's still in the air.
+                    double panProgress = std::min(1.0, phaseTimer / 80.0);
 
-            if (!fallingSeeds.empty())
-            {
-                Seed &s = fallingSeeds[0];
+                    // Add a cinematic "ease-out" curve. The pan moves fast initially to catch
+                    // the seed, then gently slows down as it locks on.
+                    double ease = 1.0 - pow(1.0 - panProgress, 3);
 
-                // 1. Keep your original cinematic zoom speed
-                if (zoomScale < 8.0)
-                    zoomScale += 0.05;
+                    // 4. Calculate the current point the camera should look at
+                    double currentFocusX = startFocusX + (targetFocusX - startFocusX) * ease;
+                    double currentFocusY = startFocusY + (targetFocusY - startFocusY) * ease;
 
-                // 2. Define the starting focus (Center of Tree) and target focus (Seed)
-                double startFocusX = screenWidth / 2.0;
-                double startFocusY = screenHeight / 2.0;
-                double targetFocusX = s.x;
-                double targetFocusY = s.y;
+                    // 5. THE MAGIC FORMULA: Keep currentFocus perfectly centered at the current zoomScale
+                    cameraOffsetX = (screenWidth / 2.0 / zoomScale) - currentFocusX;
+                    cameraOffsetY = (screenHeight / 2.0 / zoomScale) - currentFocusY;
 
-                // 3. Calculate camera panning progress (0.0 to 1.0)
-                // Using phaseTimer / 80.0 means the pan finishes smoothly around frame 80,
-                // ensuring the camera locks onto the seed while it's still in the air.
-                double panProgress = std::min(1.0, phaseTimer / 80.0);
-
-                // Add a cinematic "ease-out" curve. The pan moves fast initially to catch
-                // the seed, then gently slows down as it locks on.
-                double ease = 1.0 - pow(1.0 - panProgress, 3);
-
-                // 4. Calculate the current point the camera should look at
-                double currentFocusX = startFocusX + (targetFocusX - startFocusX) * ease;
-                double currentFocusY = startFocusY + (targetFocusY - startFocusY) * ease;
-
-                // 5. THE MAGIC FORMULA: Keep currentFocus perfectly centered at the current zoomScale
-                cameraOffsetX = (screenWidth / 2.0 / zoomScale) - currentFocusX;
-                cameraOffsetY = (screenHeight / 2.0 / zoomScale) - currentFocusY;
-
-                // Trigger Phase 5 once landed
-                if (s.y >= groundLevel + 25)
-                {
-                    // Wait for a small pause before zooming out
-                    if (phaseTimer > 100)
-                    {
-                        animationPhase = 5;
-                        phaseTimer = 0;
+                    // Trigger Phase 5 once landed
+                    if (s.y >= groundLevel + 25) {
+                        // Wait for a small pause before zooming out
+                        if (phaseTimer > 100) {
+                            animationPhase = 5;
+                            phaseTimer = 0;
+                        }
                     }
                 }
+                break;
             }
-            break;
-        }
 
-        case 5:
-        { // Zoom out phase
-            if (phaseTimer < 150)
-            { // Give it 150 frames to zoom out
-                double progress = phaseTimer / 150.0;
-                double morph = easeInOut(progress);
+            case 5: {                    // Zoom out phase
+                if (phaseTimer < 150) {  // Give it 150 frames to zoom out
+                    double progress = phaseTimer / 150.0;
 
-                zoomScale = 8.0 - (7.0 * morph);
+                    // Smoothly transition zoom from 8.0 back to 1.0
+                    zoomScale = 8.0 - (7.0 * progress);
 
-                if (!fallingSeeds.empty())
-                {
-                    Seed &s = fallingSeeds[0];
+                    if (!fallingSeeds.empty()) {
+                        Seed& s = fallingSeeds[0];
 
-                    // X Axis: Stay centered on seed
-                    cameraOffsetX = (screenWidth / 2.0 / zoomScale) - s.x;
+                        // X Axis: Stay centered on seed
+                        cameraOffsetX = (screenWidth / 2.0 / zoomScale) - s.x;
 
-                    // Y Axis: Transition from "Center of Screen" to "Landed Position"
-                    double startScreenY = screenHeight / 2.0;
-                    double endScreenY = (groundLevel + 25.0);
-                    double currentScreenY = startScreenY + (endScreenY - startScreenY) * progress;
+                        // Y Axis: Transition from "Center of Screen" to "Landed Position"
+                        double startScreenY = screenHeight / 2.0;
+                        double endScreenY = (groundLevel + 25.0);
+                        double currentScreenY = startScreenY + (endScreenY - startScreenY) * progress;
 
-                    cameraOffsetY = (currentScreenY / zoomScale) - s.y;
+                        cameraOffsetY = (currentScreenY / zoomScale) - s.y;
+                    }
+
+                    // Fade out the old tree scale
+                    treeGrowthScale = 1.0 - progress;
+                } else {
+                    // HARD RESET to ensure next cycle starts clean
+                    zoomScale = 1.0;
+                    cameraOffsetX = 0;
+                    cameraOffsetY = 0;
+                    if (!fallingSeeds.empty()) seedX = fallingSeeds[0].x;
+                    resetAnimation();
                 }
-
-                // Fade out the old tree scale
-                treeGrowthScale = 1.0 - progress;
+                break;
             }
-            else
-            {
-                // HARD RESET to ensure next cycle starts clean
-                zoomScale = 1.0;
-                cameraOffsetX = 0;
-                cameraOffsetY = 0;
-                if (!fallingSeeds.empty())
-                    seedX = fallingSeeds[0].x;
-                resetAnimation();
-            }
-            break;
-        }
         }
 
         auto currentTime = std::chrono::steady_clock::now();
         double elapsedSeconds = std::chrono::duration<double>(currentTime - lastTime).count();
         lastTime = currentTime;
 
-        sunAngleTarget += 0.25 * elapsedSeconds; // target moves continuously
-        if (sunAngleTarget > 2 * PI)
-            sunAngleTarget -= 2 * PI;
-
-        // smooth interpolation using ease
-        double alpha = 0.1; // smoothing factor: smaller = smoother
-        sunAngle = sunAngle + (sunAngleTarget - sunAngle) * alpha;
+        sunAngle += 0.25 * elapsedSeconds;  // radians per second
+        if (sunAngle > 2 * PI) sunAngle -= 2 * PI;
     }
 
-    void render()
-    {
+    void render() {
         setactivepage(1 - getactivepage());
 
         // 1. ENVIRONMENT (Sky, Sun, Clouds)
@@ -782,12 +660,9 @@ public:
 
         // 4. CHECK FOR NEW GENERATION
         bool newSeedHasLanded = false;
-        if (!fallingSeeds.empty())
-        {
-            for (const auto &s : fallingSeeds)
-            {
-                if (!s.active && s.y >= groundLevel - 1)
-                {
+        if (!fallingSeeds.empty()) {
+            for (const auto& s : fallingSeeds) {
+                if (!s.active && s.y >= groundLevel - 1) {
                     newSeedHasLanded = true;
                     break;
                 }
@@ -796,8 +671,7 @@ public:
 
         // --- 5. FALLING SEEDS (Drawn BEHIND the tree) ---
         // Moving this here ensures branches/leaves are drawn over the falling seeds.
-        for (const auto &s : fallingSeeds)
-        {
+        for (const auto& s : fallingSeeds) {
             int sx = static_cast<int>((s.x + cameraOffsetX) * zoomScale);
             int sy = static_cast<int>((s.y + cameraOffsetY) * zoomScale);
 
@@ -806,11 +680,9 @@ public:
         }
 
         // 6. THE PARENT TREE & ROOT SYSTEM (Drawn IN FRONT of falling seeds)
-        if (!newSeedHasLanded)
-        {
+        if (!newSeedHasLanded) {
             // --- ROOTS & CONNECTOR ---
-            if (animationPhase >= 1 && animationPhase <= 4)
-            {
+            if (animationPhase >= 1 && animationPhase <= 4) {
                 setcolor(COLOR(140, 100, 60));
                 int connectionWidth = std::max(1, static_cast<int>(5 * zoomScale * treeGrowthScale));
                 setlinestyle(SOLID_LINE, 0, connectionWidth);
@@ -824,78 +696,62 @@ public:
 
             // --- TRUNK & CANOPY ---
             // This is the main visual body that will now occlude the seeds
-            if (animationPhase >= 2 || (animationPhase == 1 && phaseTimer > 50))
-            {
+            if (animationPhase >= 2 || (animationPhase == 1 && phaseTimer > 50)) {
                 double blendFactor = (animationPhase == 1) ? (phaseTimer - 50) / 10.0 : 1.0;
                 setcolor(DARK_BROWN);
-                if (treeGrowthScale > 0.01)
-                {
+                if (treeGrowthScale > 0.01) {
                     drawBranch(anchorX, visualGroundY, 150 * zoomScale, PI / 2.0, 5, treeGrowthScale * blendFactor, treeGrowthScale);
                 }
             }
 
             // --- THE VANISHING INITIAL SEED ---
-            if (animationPhase <= 2)
-            {
+            if (animationPhase <= 2) {
                 double morphFactor = std::max(0.0, 1.0 - (treeGrowthScale * 5.0));
 
-                if (morphFactor > 0.01)
-                {
+                if (morphFactor > 0.01) {
                     double currentScale = (animationPhase == 0 ? 1.0 + phaseTimer / 20.0 : 2.0) * morphFactor * zoomScale;
                     drawSeed(anchorX, anchorY, 0, currentScale);
                 }
             }
 
             // --- SPROUT & LEAVES ---
-            if (animationPhase == 0 && phaseTimer > 20)
-            {
+            if (animationPhase == 0 && phaseTimer > 20) {
                 setcolor(LIGHT_GREEN);
                 setlinestyle(SOLID_LINE, 0, 2);
                 double sproutProgress = (phaseTimer - 20) / 20.0;
                 int sproutLength = static_cast<int>(sproutProgress * 20 * zoomScale);
                 line(anchorX, anchorY, anchorX, anchorY - sproutLength);
             }
-            if (animationPhase == 1)
-            {
+            if (animationPhase == 1) {
                 drawSeedlingLeaves(anchorX, anchorY, phaseTimer / 60.0);
             }
         }
 
         displayPhaseInfo();
-        if (isPaused)
-        {
+        if (isPaused) {
             drawPauseMenu();
         }
         setvisualpage(getactivepage());
     }
 
-    void run()
-    {
+    void run() {
         initialize();
-        isPaused = true; // Ensure we start paused
+        isPaused = true;  // Ensure we start paused
 
-        while (true)
-        {
-            if (kbhit())
-            {
+        while (true) {
+            if (kbhit()) {
                 char key = getch();
-                if (key == 'q' || key == 'Q')
-                    break;
-                if (key == 'r' || key == 'R')
-                {
+                if (key == 'q' || key == 'Q') break;
+                if (key == 'r' || key == 'R') {
                     resetAnimation();
-                    isPaused = false; // Optional: Auto-play on reset
+                    isPaused = false;  // Optional: Auto-play on reset
                 }
-                if (key == ' ')
-                    isPaused = !isPaused;
+                if (key == ' ') isPaused = !isPaused;
             }
 
-            if (!isPaused)
-            {
+            if (!isPaused) {
                 update();
-            }
-            else
-            {
+            } else {
                 // THE SUN TELEPORTATION FIX:
                 // We refresh lastTime even while paused. When we resume,
                 // the delta in update() will only be ~33ms instead of the
@@ -904,14 +760,13 @@ public:
             }
 
             render();
-            delay(16);
+            delay(33);
         }
         closegraph();
     }
 };
 
-int main()
-{
+int main() {
     AnimatedTreeDrawer drawer;
     drawer.run();
 

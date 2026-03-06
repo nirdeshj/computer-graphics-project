@@ -1,6 +1,3 @@
-#mingw32-make
-#mingw32-make clean
-
 CXX = C:/mingwc/bin/g++.exe
 CXXFLAGS = -std=c++17 -O2 -Wall -Wextra -fdiagnostics-color=always -g
 TARGET = run.exe
